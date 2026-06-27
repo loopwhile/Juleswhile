@@ -587,6 +587,10 @@ function getTaskIdFromIssue(
     return markerMatch[1].toUpperCase();
   }
 
+  if (!getLabels(issue).has("juleswhile:task")) {
+    return null;
+  }
+
   const titleMatch = issue.title.match(
     /\b(TASK-[0-9]{3,})\b/i,
   );

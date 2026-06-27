@@ -455,6 +455,10 @@ function getTaskId(
     return markerMatch[1].toUpperCase();
   }
 
+  if (!getLabels(issue).has("juleswhile:task")) {
+    return null;
+  }
+
   const titleMatch =
     issue.title.match(
       /\b(TASK-[0-9]{3,})\b/i,
@@ -820,6 +824,9 @@ async function main(): Promise<void> {
     groups.set(taskId, group);
   }
 
+  result.summary.scanned =
+    groups.size;
+
   for (
     const [
       taskId,
@@ -844,6 +851,10 @@ async function main(): Promise<void> {
       const duplicate of
       ordered.slice(1)
     ) {
+      if (duplicate.state !== "open") {
+        continue;
+      }
+
       result.summary.incidents += 1;
       result.summary.blocked += 1;
 

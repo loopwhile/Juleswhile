@@ -522,12 +522,24 @@ function getTaskId(
 ): string | null {
   const body = issue.body ?? "";
 
-  const match = body.match(
+  const markerMatch = body.match(
     /<!--\s*juleswhile:task-id:(TASK-[0-9]{3,})\s*-->/i,
   );
 
-  return match
-    ? match[1].toUpperCase()
+  if (markerMatch) {
+    return markerMatch[1].toUpperCase();
+  }
+
+  if (!getLabels(issue).has("juleswhile:task")) {
+    return null;
+  }
+
+  const titleMatch = issue.title.match(
+    /\b(TASK-[0-9]{3,})\b/i,
+  );
+
+  return titleMatch
+    ? titleMatch[1].toUpperCase()
     : null;
 }
 
@@ -796,6 +808,16 @@ async function syncIssues(
   issues: GitHubIssue[],
   options: CliOptions,
 ): Promise<SyncResult> {
+  const issueByNumber =
+    new Map<number, GitHubIssue>(
+      issues.map(
+        (issue) => [
+          issue.number,
+          issue,
+        ],
+      ),
+    );
+
   const issueMap =
     new Map<string, GitHubIssue>();
 
@@ -828,8 +850,39 @@ async function syncIssues(
       continue;
     }
 
-    const existing =
-      issueMap.get(task.id);
+    const linkedIssueNumber =
+      task.metadata.issue_number;
+
+    let existing: GitHubIssue | undefined;
+
+    if (
+      linkedIssueNumber !== null &&
+      linkedIssueNumber !== undefined
+    ) {
+      existing =
+        issueByNumber.get(
+          linkedIssueNumber,
+        );
+
+      if (!existing) {
+        fail(
+          `${task.id}의 metadata.issue_number #${linkedIssueNumber}를 GitHub Issues에서 찾을 수 없습니다.`,
+        );
+      }
+
+      const linkedTaskId =
+        getTaskId(existing);
+
+      if (linkedTaskId !== task.id) {
+        fail(
+          `${task.id}의 metadata.issue_number #${linkedIssueNumber}가 ` +
+            `다른 TASK를 가리킵니다: ${linkedTaskId ?? "unknown"}`,
+        );
+      }
+    } else {
+      existing =
+        issueMap.get(task.id);
+    }
 
     const body =
       buildTaskIssueBody(task);
