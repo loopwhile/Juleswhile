@@ -330,10 +330,7 @@ jobs:
             --description "Automatic merge policy blocked this PR" \
             --force
 
-          gh pr edit "$RESOLVED_PR_NUMBER" \
-            --repo "$REPOSITORY" \
-            --add-label "state:merge-blocked" \
-            || true
+          jq -n             '{labels:["state:merge-blocked"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${RESOLVED_PR_NUMBER}/labels"                 --input -                 > /dev/null
 
           echo "::notice::자동 병합 정책이 Pull Request를 차단했습니다."
 
@@ -450,12 +447,12 @@ jobs:
             --description "TASK completed and merged into main" \
             --force
 
-          gh issue edit "$TASK_ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --remove-label "state:running" \
-            --remove-label "state:validating" \
-            --add-label "state:completed" \
-            || true
+          for label in             "state:running"             "state:validating"
+          do
+            gh api               --method DELETE               "repos/${REPOSITORY}/issues/${TASK_ISSUE_NUMBER}/labels/${label}"               > /dev/null 2>&1               || true
+          done
+
+          jq -n             '{labels:["state:completed"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${TASK_ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
 
           gh issue comment "$TASK_ISSUE_NUMBER" \
             --repo "$REPOSITORY" \
@@ -534,10 +531,7 @@ jobs:
             --description "Automatic merge attempt failed" \
             --force
 
-          gh pr edit "$RESOLVED_PR_NUMBER" \
-            --repo "$REPOSITORY" \
-            --add-label "state:merge-failed" \
-            || true
+          jq -n             '{labels:["state:merge-failed"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${RESOLVED_PR_NUMBER}/labels"                 --input -                 > /dev/null             || true
 
           gh pr comment "$RESOLVED_PR_NUMBER" \
             --repo "$REPOSITORY" \

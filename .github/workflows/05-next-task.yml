@@ -310,10 +310,9 @@ jobs:
             --description "TASK selected and waiting for Jules dispatch" \
             --force
 
-          gh issue edit "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --remove-label "state:ready" \
-            --add-label "state:queued"
+          gh api             --method DELETE             "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels/state:ready"             > /dev/null 2>&1             || true
+
+          jq -n             '{labels:["state:queued"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
 
           gh issue comment "$ISSUE_NUMBER" \
             --repo "$REPOSITORY" \
