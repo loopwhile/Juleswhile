@@ -800,9 +800,9 @@ function getJulesSourceName(): string {
     process.env.JULES_SOURCE_NAME ??
     "";
 
-  if (!/^sources\/[A-Za-z0-9._-]+$/.test(sourceName)) {
+  if (!/^sources(?:\/[A-Za-z0-9._-]+)+$/.test(sourceName)) {
     fail(
-      "JULES_SOURCE_NAME은 sources/<name> 형식이어야 합니다.",
+      "JULES_SOURCE_NAME은 sources/<path> 형식이어야 합니다.",
     );
   }
 
