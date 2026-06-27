@@ -1,0 +1,542 @@
+name: "02 · Dispatch Jules TASK"
+
+on:
+  repository_dispatch:
+    types:
+      - task_ready
+
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: "실행할 TASK ID"
+        required: true
+        type: string
+
+      issue_number:
+        description: "TASK 추적 Issue 번호. 없으면 비워 둡니다."
+        required: false
+        type: string
+
+      dry_run:
+        description: "Jules API를 호출하지 않고 Dispatch 가능 여부만 검증"
+        required: false
+        default: true
+        type: boolean
+
+      force:
+        description: "자동화 중지 또는 기존 Dispatch 기록을 무시"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: >-
+    dispatch-${{
+      github.event.client_payload.task_id ||
+      inputs.task_id ||
+      github.run_id
+    }}
+  cancel-in-progress: false
+
+env:
+  AUTOMATION_ENABLED: ${{ vars.AUTOMATION_ENABLED || 'false' }}
+  JULES_SOURCE_NAME: ${{ vars.JULES_SOURCE_NAME }}
+  JULES_MAX_CONCURRENCY: ${{ vars.JULES_MAX_CONCURRENCY || '10' }}
+  JULES_DAILY_NEW_TASK_BUDGET: ${{ vars.JULES_DAILY_NEW_TASK_BUDGET || '65' }}
+  JULES_DAILY_CORRECTION_BUDGET: ${{ vars.JULES_DAILY_CORRECTION_BUDGET || '20' }}
+  JULES_DAILY_MAINTENANCE_BUDGET: ${{ vars.JULES_DAILY_MAINTENANCE_BUDGET || '10' }}
+  JULES_DAILY_RESERVE: ${{ vars.JULES_DAILY_RESERVE || '5' }}
+
+jobs:
+  dispatch:
+    name: Dispatch one TASK to one Jules Session
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Resolve Dispatch input
+        id: input
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_TASK_ID: ${{ github.event.client_payload.task_id }}
+          EVENT_ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+          EVENT_DRY_RUN: ${{ github.event.client_payload.dry_run }}
+          EVENT_FORCE: ${{ github.event.client_payload.force }}
+          MANUAL_TASK_ID: ${{ inputs.task_id }}
+          MANUAL_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          MANUAL_DRY_RUN: ${{ inputs.dry_run }}
+          MANUAL_FORCE: ${{ inputs.force }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
+            TASK_ID="${EVENT_TASK_ID:-}"
+            ISSUE_NUMBER="${EVENT_ISSUE_NUMBER:-}"
+            DRY_RUN="${EVENT_DRY_RUN:-false}"
+            FORCE_RUN="${EVENT_FORCE:-false}"
+          else
+            TASK_ID="${MANUAL_TASK_ID:-}"
+            ISSUE_NUMBER="${MANUAL_ISSUE_NUMBER:-}"
+            DRY_RUN="${MANUAL_DRY_RUN:-true}"
+            FORCE_RUN="${MANUAL_FORCE:-false}"
+          fi
+
+          TASK_ID="$(
+            printf '%s' "$TASK_ID" \
+              | tr '[:lower:]' '[:upper:]' \
+              | xargs
+          )"
+
+          if [[ ! "$TASK_ID" =~ ^TASK-[0-9]{3,}$ ]]; then
+            echo "::error::TASK ID는 TASK-000 형식이어야 합니다: ${TASK_ID}"
+            exit 1
+          fi
+
+          if [[ -n "$ISSUE_NUMBER" ]] \
+            && [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::Issue 번호는 숫자여야 합니다."
+            exit 1
+          fi
+
+          case "$DRY_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::dry_run은 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          case "$FORCE_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::force는 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          if [[ "$AUTOMATION_ENABLED" != "true" ]] \
+            && [[ "$DRY_RUN" != "true" ]] \
+            && [[ "$FORCE_RUN" != "true" ]]; then
+            echo "::error::AUTOMATION_ENABLED가 true가 아닙니다. 실제 Dispatch가 차단됐습니다."
+            exit 1
+          fi
+
+          echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
+          echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "force=${FORCE_RUN}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Validate Dispatcher files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          REQUIRED_FILES=(
+            "AGENTS.md"
+            "PROJECT_GOAL.md"
+            "ops/tasks/task-index.yaml"
+            "ops/state/project-state.json"
+            "ops/scripts/dispatch-jules.ts"
+            "package.json"
+          )
+
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error::필수 Dispatcher 파일이 없습니다: ${file}"
+              exit 1
+            fi
+          done
+
+      - name: Validate Jules configuration
+        if: steps.input.outputs.dry_run != 'true'
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -z "${JULES_API_KEY:-}" ]]; then
+            echo "::error::JULES_API_KEY Secret이 설정되지 않았습니다."
+            exit 1
+          fi
+
+          if [[ -z "${JULES_SOURCE_NAME:-}" ]]; then
+            echo "::error::JULES_SOURCE_NAME Repository Variable이 설정되지 않았습니다."
+            exit 1
+          fi
+
+          if [[ "$JULES_SOURCE_NAME" != sources/* ]]; then
+            echo "::error::JULES_SOURCE_NAME은 sources/ 형식이어야 합니다."
+            exit 1
+          fi
+
+      - name: Install dispatcher dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -f package-lock.json ]]; then
+            npm ci --no-audit --no-fund
+          else
+            echo "::warning::package-lock.json이 없어 npm install을 사용합니다."
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Dispatch TASK
+        id: dispatch
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          TASK_ID: ${{ steps.input.outputs.task_id }}
+          ISSUE_NUMBER: ${{ steps.input.outputs.issue_number }}
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+          FORCE_RUN: ${{ steps.input.outputs.force }}
+          RESPONSE_FILE: ${{ runner.temp }}/jules-dispatch-result.json
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+          WORKFLOW_RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          COMMAND=(
+            npm
+            run
+            dispatch:jules
+            --
+            --task-id
+            "$TASK_ID"
+            --repository
+            "$REPOSITORY"
+            --response-file
+            "$RESPONSE_FILE"
+          )
+
+          if [[ -n "$ISSUE_NUMBER" ]]; then
+            COMMAND+=(
+              --issue-number
+              "$ISSUE_NUMBER"
+            )
+          fi
+
+          if [[ "$DRY_RUN" == "true" ]]; then
+            COMMAND+=(--dry-run)
+          fi
+
+          if [[ "$FORCE_RUN" == "true" ]]; then
+            COMMAND+=(--force)
+          fi
+
+          "${COMMAND[@]}"
+
+          if [[ ! -f "$RESPONSE_FILE" ]]; then
+            echo "::error::Dispatcher가 결과 파일을 생성하지 않았습니다."
+            exit 1
+          fi
+
+          jq empty "$RESPONSE_FILE"
+
+          DISPATCHED="$(
+            jq -r '.dispatched // false' \
+              "$RESPONSE_FILE"
+          )"
+
+          RESULT_TASK_ID="$(
+            jq -r '.taskId // empty' \
+              "$RESPONSE_FILE"
+          )"
+
+          SESSION_NAME="$(
+            jq -r '.session.name // empty' \
+              "$RESPONSE_FILE"
+          )"
+
+          SESSION_ID="$(
+            jq -r '.session.id // empty' \
+              "$RESPONSE_FILE"
+          )"
+
+          SESSION_URL="$(
+            jq -r '.session.url // empty' \
+              "$RESPONSE_FILE"
+          )"
+
+          SESSION_STATE="$(
+            jq -r '.session.state // empty' \
+              "$RESPONSE_FILE"
+          )"
+
+          RESULT_ISSUE_NUMBER="$(
+            jq -r '.issueNumber // empty' \
+              "$RESPONSE_FILE"
+          )"
+
+          DRY_RUN_RESULT="$(
+            jq -r '.dryRun // false' \
+              "$RESPONSE_FILE"
+          )"
+
+          if [[ "$RESULT_TASK_ID" != "$TASK_ID" ]]; then
+            echo "::error::Dispatcher 결과의 TASK ID가 요청과 다릅니다."
+            exit 1
+          fi
+
+          if [[ "$DRY_RUN_RESULT" != "true" ]] \
+            && [[ "$DISPATCHED" != "true" ]]; then
+            echo "::error::TASK가 Jules에 Dispatch되지 않았습니다."
+            exit 1
+          fi
+
+          echo "dispatched=${DISPATCHED}" >> "$GITHUB_OUTPUT"
+          echo "task_id=${RESULT_TASK_ID}" >> "$GITHUB_OUTPUT"
+          echo "session_name=${SESSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "session_id=${SESSION_ID}" >> "$GITHUB_OUTPUT"
+          echo "session_url=${SESSION_URL}" >> "$GITHUB_OUTPUT"
+          echo "session_state=${SESSION_STATE}" >> "$GITHUB_OUTPUT"
+          echo "issue_number=${RESULT_ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN_RESULT}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve tracking Issue
+        id: issue
+        env:
+          INPUT_ISSUE_NUMBER: ${{ steps.input.outputs.issue_number }}
+          RESULT_ISSUE_NUMBER: ${{ steps.dispatch.outputs.issue_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          ISSUE_NUMBER="${RESULT_ISSUE_NUMBER:-${INPUT_ISSUE_NUMBER:-}}"
+
+          if [[ -n "$ISSUE_NUMBER" ]] \
+            && [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::Dispatcher 결과의 Issue 번호가 유효하지 않습니다."
+            exit 1
+          fi
+
+          echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "has_issue=$([[ -n "$ISSUE_NUMBER" ]] && echo true || echo false)" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Ensure TASK labels
+        if: steps.issue.outputs.has_issue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "juleswhile:task" \
+            --repo "$REPOSITORY" \
+            --color "0052CC" \
+            --description "Juleswhile executable TASK" \
+            --force
+
+          gh label create "state:running" \
+            --repo "$REPOSITORY" \
+            --color "1D76DB" \
+            --description "Jules session is running" \
+            --force
+
+          gh label create "state:dry-run" \
+            --repo "$REPOSITORY" \
+            --color "BFD4F2" \
+            --description "Dispatch validation without Jules API call" \
+            --force
+
+          gh label create "state:failed" \
+            --repo "$REPOSITORY" \
+            --color "D73A4A" \
+            --description "Automation or Jules session failed" \
+            --force
+
+      - name: Record dry-run result
+        if: >-
+          steps.issue.outputs.has_issue == 'true' &&
+          steps.dispatch.outputs.dry_run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TRACKING_ISSUE: ${{ steps.issue.outputs.issue_number }}
+          TASK_ID: ${{ steps.dispatch.outputs.task_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh issue edit "$TRACKING_ISSUE" \
+            --repo "$REPOSITORY" \
+            --add-label "juleswhile:task,state:dry-run"
+
+          gh issue comment "$TRACKING_ISSUE" \
+            --repo "$REPOSITORY" \
+            --body "$(
+              cat <<EOF
+          <!-- juleswhile:task-dispatch-dry-run -->
+
+          ## Jules TASK Dispatch Dry Run
+
+          \`${TASK_ID}\`의 Dispatch 사전 검증을 통과했습니다.
+
+          Jules API는 호출하지 않았으며 Session도 생성하지 않았습니다.
+
+          - Workflow Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Source: \`${JULES_SOURCE_NAME:-not-validated-in-dry-run}\`
+          - Starting branch: \`main\`
+
+          실제 실행 전 TASK Manifest, 의존성, 사용량,
+          동시성 및 Resource Lock을 다시 확인하십시오.
+          EOF
+            )"
+
+      - name: Record Jules TASK session
+        if: >-
+          steps.issue.outputs.has_issue == 'true' &&
+          steps.dispatch.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TRACKING_ISSUE: ${{ steps.issue.outputs.issue_number }}
+          TASK_ID: ${{ steps.dispatch.outputs.task_id }}
+          SESSION_NAME: ${{ steps.dispatch.outputs.session_name }}
+          SESSION_ID: ${{ steps.dispatch.outputs.session_id }}
+          SESSION_URL: ${{ steps.dispatch.outputs.session_url }}
+          SESSION_STATE: ${{ steps.dispatch.outputs.session_state }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh issue edit "$TRACKING_ISSUE" \
+            --repo "$REPOSITORY" \
+            --remove-label "state:ready" \
+            --remove-label "state:queued" \
+            --remove-label "state:dispatching" \
+            --add-label "juleswhile:task,state:running" \
+            || true
+
+          COMMENT_FILE="${RUNNER_TEMP}/task-dispatch-comment.md"
+
+          cat > "$COMMENT_FILE" <<EOF
+          <!-- juleswhile:task-dispatch -->
+
+          ## Jules TASK Dispatch
+
+          \`${TASK_ID}\`를 Jules Session 하나에 전달했습니다.
+
+          | 항목 | 값 |
+          |---|---|
+          | TASK | \`${TASK_ID}\` |
+          | Session | \`${SESSION_NAME}\` |
+          | Session ID | \`${SESSION_ID}\` |
+          | Session 상태 | \`${SESSION_STATE:-QUEUED}\` |
+          | Starting branch | \`main\` |
+          | Automation mode | \`AUTO_CREATE_PR\` |
+
+          $(
+            if [[ -n "$SESSION_URL" ]]; then
+              printf '%s\n' "[Jules Session 열기](${SESSION_URL})"
+            else
+              printf '%s\n' "Session URL은 Jules API 응답에 포함되지 않았습니다."
+            fi
+          )
+
+          하나의 Jules Session은 이 TASK 하나만 처리해야 합니다.
+
+          작업 결과는 임시 브랜치와 Pull Request로 제출되며,
+          CI 검증 전에는 \`main\`에 병합되지 않습니다.
+          EOF
+
+          gh issue comment "$TRACKING_ISSUE" \
+            --repo "$REPOSITORY" \
+            --body-file "$COMMENT_FILE"
+
+      - name: Write workflow summary
+        if: success()
+        env:
+          TASK_ID: ${{ steps.dispatch.outputs.task_id }}
+          DRY_RUN: ${{ steps.dispatch.outputs.dry_run }}
+          DISPATCHED: ${{ steps.dispatch.outputs.dispatched }}
+          SESSION_NAME: ${{ steps.dispatch.outputs.session_name }}
+          SESSION_URL: ${{ steps.dispatch.outputs.session_url }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          {
+            echo "# Juleswhile TASK Dispatch"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| TASK | \`${TASK_ID}\` |"
+            echo "| Dry Run | \`${DRY_RUN}\` |"
+            echo "| Dispatched | \`${DISPATCHED}\` |"
+            echo "| Tracking Issue | \`${ISSUE_NUMBER:-none}\` |"
+            echo "| Session | \`${SESSION_NAME:-none}\` |"
+
+            if [[ -n "${SESSION_URL:-}" ]]; then
+              echo "| Session URL | ${SESSION_URL} |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record Dispatch failure
+        if: failure() && steps.issue.outputs.has_issue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TRACKING_ISSUE: ${{ steps.issue.outputs.issue_number }}
+          TASK_ID: ${{ steps.input.outputs.task_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "state:failed" \
+            --repo "$REPOSITORY" \
+            --color "D73A4A" \
+            --description "Automation or Jules session failed" \
+            --force
+
+          gh issue edit "$TRACKING_ISSUE" \
+            --repo "$REPOSITORY" \
+            --remove-label "state:dispatching" \
+            --add-label "state:failed" \
+            || true
+
+          gh issue comment "$TRACKING_ISSUE" \
+            --repo "$REPOSITORY" \
+            --body "$(
+              cat <<EOF
+          ## Jules TASK Dispatch 실패
+
+          \`${TASK_ID:-unknown}\`를 Jules에 전달하는 과정에서 오류가 발생했습니다.
+
+          - Workflow Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Run Attempt: ${GITHUB_RUN_ATTEMPT}
+
+          실패 원인을 확인한 후 Correction 또는 Incident Issue를 생성하십시오.
+
+          Secret, API Key 또는 Token을 Issue에 복사하지 마십시오.
+          EOF
+            )" \
+            || true

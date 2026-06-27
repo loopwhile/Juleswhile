@@ -1,0 +1,332 @@
+name: Correction Request
+description: CI 실패, 리뷰 반려 또는 완료 조건 미충족 TASK의 보완 작업을 요청합니다.
+title: "[CORRECTION] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        # Juleswhile Correction Request
+
+        이 Issue는 기존 TASK 또는 Pull Request의 실패를 보완하기 위한
+        제한된 수정 작업을 정의합니다.
+
+        Correction은 새로운 기능을 추가하는 TASK가 아닙니다.
+
+        하나의 Correction은 다음 원칙을 따릅니다.
+
+        - 기존 TASK의 목표를 변경하지 않습니다.
+        - 실패 원인과 직접 관련된 범위만 수정합니다.
+        - 실패한 검증을 삭제하거나 약화하지 않습니다.
+        - 허용된 최대 자동 보완 횟수를 초과하면 BLOCKED로 전환합니다.
+        - API Key, Token, 비밀번호, 개인정보를 입력하지 않습니다.
+
+  - type: input
+    id: correction_id
+    attributes:
+      label: Correction ID
+      description: 중복되지 않는 Correction 식별자를 입력합니다.
+      placeholder: 예) CORRECTION-023-02
+    validations:
+      required: true
+
+  - type: input
+    id: task_id
+    attributes:
+      label: 원본 TASK ID
+      description: 보완 대상 TASK의 ID를 입력합니다.
+      placeholder: 예) TASK-023
+    validations:
+      required: true
+
+  - type: input
+    id: task_issue
+    attributes:
+      label: 원본 TASK Issue
+      description: 원본 TASK를 추적하는 GitHub Issue 번호 또는 URL을 입력합니다.
+      placeholder: 예) #23
+    validations:
+      required: true
+
+  - type: input
+    id: pull_request
+    attributes:
+      label: 대상 Pull Request
+      description: CI 실패 또는 리뷰 반려가 발생한 Pull Request 번호나 URL을 입력합니다.
+      placeholder: 예) #41
+    validations:
+      required: true
+
+  - type: input
+    id: jules_session
+    attributes:
+      label: Jules Session
+      description: 기존 Jules Session의 이름 또는 URL을 입력합니다.
+      placeholder: 예) sessions/123456789 또는 Jules Session URL
+    validations:
+      required: false
+
+  - type: dropdown
+    id: failure_stage
+    attributes:
+      label: 실패 단계
+      description: Correction이 필요한 원인을 선택합니다.
+      options:
+        - planning
+        - implementation
+        - lint
+        - typecheck
+        - unit-test
+        - integration-test
+        - end-to-end-test
+        - build
+        - security-check
+        - policy-check
+        - schema-validation
+        - reviewer-rejection
+        - deployment
+        - acceptance-criteria
+        - other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: failure_type
+    attributes:
+      label: 실패 유형
+      options:
+        - 코드 오류
+        - 테스트 실패
+        - 빌드 실패
+        - 요구사항 누락
+        - 완료 조건 미충족
+        - 허용 범위 위반
+        - 문서와 구현 불일치
+        - 보안 문제
+        - 데이터 문제
+        - 외부 서비스 오류
+        - 배포 오류
+        - 검증 환경 문제
+        - 기타
+    validations:
+      required: true
+
+  - type: textarea
+    id: failure_summary
+    attributes:
+      label: 실패 요약
+      description: 무엇이 실패했고 실제 결과가 무엇인지 간단명료하게 작성합니다.
+      placeholder: |
+        예)
+        기사 상세 페이지의 존재하지 않는 slug 처리 테스트가 실패한다.
+
+        예상 결과:
+        404 페이지를 반환해야 한다.
+
+        실제 결과:
+        런타임 예외가 발생하고 500 응답을 반환한다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: failed_checks
+    attributes:
+      label: 실패한 검증
+      description: 실패한 CI Job, 테스트, 완료 조건을 작성합니다.
+      placeholder: |
+        - npm test -- article-page
+        - tests/article-page.spec.ts
+        - Acceptance criterion: 존재하지 않는 slug는 404를 반환한다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 실패 증거
+      description: 민감정보를 제거한 오류 메시지, 로그 요약, 재현 결과를 작성합니다.
+      placeholder: |
+        Error:
+        Expected status 404, received 500
+
+        Reproduction:
+        1. npm test -- article-page
+        2. nonexistent slug 테스트 실행
+        3. loader에서 undefined property 접근 발생
+
+        로그에는 Token, API Key, 개인정보를 포함하지 마십시오.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suspected_cause
+    attributes:
+      label: 추정 원인
+      description: 확인된 원인 또는 현재 가장 가능성이 높은 원인을 작성합니다.
+      placeholder: |
+        예)
+        기사 조회 결과가 없는 경우를 확인하기 전에
+        article.summary에 접근하고 있는 것으로 보인다.
+    validations:
+      required: false
+
+  - type: input
+    id: correction_attempt
+    attributes:
+      label: 현재 보완 시도
+      description: 이번 보완이 몇 번째 시도인지 숫자로 입력합니다.
+      placeholder: "1"
+      value: "1"
+    validations:
+      required: true
+
+  - type: input
+    id: max_corrections
+    attributes:
+      label: 최대 보완 횟수
+      description: 원본 TASK에서 허용한 최대 자동 보완 횟수를 입력합니다.
+      placeholder: "2"
+      value: "2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: previous_attempts
+    attributes:
+      label: 이전 보완 내역
+      description: 이전 시도가 있다면 변경 내용과 실패 이유를 작성합니다.
+      placeholder: |
+        예)
+        시도 1:
+        - null check를 추가함
+        - 페이지 렌더링 오류는 해결됐지만 HTTP 상태가 여전히 200으로 반환됨
+    validations:
+      required: false
+
+  - type: textarea
+    id: correction_objective
+    attributes:
+      label: 이번 보완 목표
+      description: 이번 Correction에서 해결해야 하는 하나의 결과를 작성합니다.
+      placeholder: |
+        존재하지 않는 기사 slug 요청에 대해
+        404 상태와 Not Found 화면을 반환하도록 수정한다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: allowed_paths
+    attributes:
+      label: 수정 허용 경로
+      description: 이번 보완에서 변경할 수 있는 경로를 한 줄에 하나씩 작성합니다.
+      placeholder: |
+        src/pages/articles/**
+        tests/article-page.spec.ts
+    validations:
+      required: true
+
+  - type: textarea
+    id: forbidden_paths
+    attributes:
+      label: 수정 금지 경로
+      description: 이번 보완에서 변경하면 안 되는 경로를 작성합니다.
+      placeholder: |
+        .github/**
+        ops/**
+        src/auth/**
+        package.json
+        netlify.toml
+    validations:
+      required: false
+
+  - type: textarea
+    id: forbidden_actions
+    attributes:
+      label: 금지 작업
+      description: 실패를 숨기기 위해 수행하면 안 되는 작업을 작성합니다.
+      value: |
+        - 실패 테스트 삭제
+        - 테스트 assertion 약화
+        - 테스트 실행 제외
+        - 기존 완료 조건 삭제
+        - 오류를 빈 catch 블록으로 은폐
+        - 원본 TASK와 무관한 기능 추가
+        - 승인되지 않은 의존성 추가
+        - 민감정보 출력
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation_commands
+    attributes:
+      label: 재검증 명령어
+      description: 수정 후 반드시 다시 실행해야 하는 명령어를 순서대로 작성합니다.
+      placeholder: |
+        npm run lint
+        npm run typecheck
+        npm test -- article-page
+        npm run build
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_result
+    attributes:
+      label: 기대 결과
+      description: 보완이 성공했을 때 확인할 수 있는 결과를 작성합니다.
+      placeholder: |
+        - 실패했던 테스트가 통과한다.
+        - 기존 기사 상세 페이지 테스트도 계속 통과한다.
+        - 존재하지 않는 slug는 404를 반환한다.
+        - production build가 성공한다.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: escalation_policy
+    attributes:
+      label: 이번 보완 실패 시 처리
+      options:
+        - 동일 세션에서 다음 보완 시도
+        - 새로운 Jules Session 생성
+        - Reviewer Agent에 원인 분석 요청
+        - TASK를 BLOCKED로 전환
+        - 사람 검토 요청
+    validations:
+      required: true
+
+  - type: dropdown
+    id: approval_policy
+    attributes:
+      label: 보완 결과 승인 정책
+      options:
+        - CI 통과 시 자동 병합 가능
+        - Reviewer Agent 승인 필요
+        - 사람 승인 필요
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: 추가 정보
+      description: 보완에 필요한 참고 문서, 관련 Issue 또는 제약사항을 작성합니다.
+      placeholder: |
+        예)
+        기존 라우팅 방식은 유지해야 한다.
+        새 라우팅 라이브러리를 추가하지 않는다.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: correction_acknowledgement
+    attributes:
+      label: Correction 계약 확인
+      options:
+        - label: 이번 작업은 원본 TASK의 실패를 보완하는 범위로 제한됩니다.
+          required: true
+        - label: 실패 테스트나 완료 조건을 삭제 또는 약화하지 않습니다.
+          required: true
+        - label: 최대 보완 횟수를 초과하면 BLOCKED 또는 사람 검토로 전환합니다.
+          required: true
+        - label: API Key, Token, 비밀번호 또는 개인정보를 포함하지 않았습니다.
+          required: true

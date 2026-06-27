@@ -1,0 +1,334 @@
+name: Incident
+description: Juleswhile 자동화, 배포, 데이터 또는 운영 장애를 기록하고 복구합니다.
+title: "[INCIDENT] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        # Juleswhile Incident
+
+        이 Issue는 Juleswhile 또는 Juleswhile로 운영되는 프로젝트에서 발생한
+        운영 장애와 비정상 상태를 추적합니다.
+
+        Incident 대응 우선순위는 다음과 같습니다.
+
+        1. 추가 피해 방지
+        2. 자동화 중지 또는 격리
+        3. 서비스 복구
+        4. 데이터와 보안 영향 확인
+        5. 원인 분석
+        6. 재발 방지 TASK 생성
+
+        API Key, Token, 비밀번호, 쿠키, 개인정보,
+        전체 운영 로그를 Issue에 입력하지 마십시오.
+
+  - type: input
+    id: incident_id
+    attributes:
+      label: Incident ID
+      description: 중복되지 않는 장애 식별자를 입력합니다.
+      placeholder: 예) INCIDENT-20260626-001
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: 심각도
+      description: 사용자 영향과 데이터·보안 위험을 기준으로 선택합니다.
+      options:
+        - SEV-1 - 전체 서비스 중단, 보안 침해 또는 데이터 손실 가능성
+        - SEV-2 - 핵심 기능 장애 또는 자동화 대규모 오작동
+        - SEV-3 - 일부 기능 장애 또는 제한된 TASK 실패
+        - SEV-4 - 사용자 영향이 거의 없는 운영 이상
+    validations:
+      required: true
+
+  - type: dropdown
+    id: incident_status
+    attributes:
+      label: 현재 상태
+      options:
+        - investigating
+        - contained
+        - monitoring
+        - resolved
+        - closed
+    validations:
+      required: true
+
+  - type: input
+    id: detected_at
+    attributes:
+      label: 최초 감지 시각
+      description: 타임존을 포함한 절대 시각으로 입력합니다.
+      placeholder: 예) 2026-06-26 23:30 KST
+    validations:
+      required: true
+
+  - type: input
+    id: started_at
+    attributes:
+      label: 장애 시작 추정 시각
+      description: 확인할 수 있다면 장애가 시작된 시각을 입력합니다.
+      placeholder: 예) 2026-06-26 23:20 KST
+    validations:
+      required: false
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: 영향 환경
+      options:
+        - GitHub Actions
+        - Google Jules
+        - Jules API
+        - GitHub Issues
+        - GitHub Pull Requests
+        - main branch
+        - Netlify production
+        - Netlify preview
+        - Stitch MCP
+        - content pipeline
+        - data pipeline
+        - local development
+        - multiple environments
+        - other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: affected_components
+    attributes:
+      label: 영향 구성요소
+      options:
+        - label: Goal Intake
+        - label: TASK 생성
+        - label: TASK Dispatcher
+        - label: Jules Session
+        - label: Pull Request 생성
+        - label: CI 검증
+        - label: Auto Merge
+        - label: 다음 TASK 전이
+        - label: Reconciler
+        - label: Netlify 배포
+        - label: 운영 대시보드
+        - label: 콘텐츠 생성
+        - label: 데이터 수집
+        - label: 인증·인가
+        - label: 결제
+        - label: 기타
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 장애 요약
+      description: 무엇이 발생했고 현재 어떤 상태인지 간단히 작성합니다.
+      placeholder: |
+        예)
+        동일한 TASK가 세 번 중복 Dispatch되어
+        Jules Session과 Pull Request가 중복 생성되었다.
+
+        현재 AUTOMATION_ENABLED를 false로 변경하여
+        신규 Dispatch를 중지한 상태다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_impact
+    attributes:
+      label: 사용자 및 프로젝트 영향
+      description: 사용자, 서비스, TASK, 배포에 미친 영향을 작성합니다.
+      placeholder: |
+        예)
+        - TASK-023 관련 PR 3개가 생성됨
+        - main에는 아직 병합되지 않음
+        - Production 서비스 영향 없음
+        - Jules Session 사용량 2개가 추가 소비됨
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected_resources
+    attributes:
+      label: 영향받은 리소스
+      description: 관련 TASK, Issue, PR, Workflow Run, Deployment URL을 작성합니다.
+      placeholder: |
+        TASK: TASK-023
+        Issue: #23
+        Pull Requests: #41, #42, #43
+        Workflow Runs: 관련 URL
+        Deployment: 관련 URL
+    validations:
+      required: false
+
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: 증상과 관측 결과
+      description: 확인된 현상과 시간 순서를 작성합니다.
+      placeholder: |
+        23:20 - repository_dispatch 발생
+        23:21 - 첫 번째 Jules Session 생성
+        23:22 - 동일 TASK에 두 번째 Workflow Run 시작
+        23:25 - 중복 PR 확인
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 증거 및 로그 요약
+      description: 민감정보를 제거한 핵심 로그, 상태 코드, 오류 메시지를 작성합니다.
+      placeholder: |
+        - Workflow concurrency group이 서로 다른 값으로 계산됨
+        - 두 Workflow Run 모두 HTTP 200 응답을 수신함
+        - project-state.json에는 session ID 하나만 기록됨
+
+        비밀 값이나 전체 로그를 붙여 넣지 마십시오.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: impact_categories
+    attributes:
+      label: 영향 유형
+      options:
+        - label: 서비스 가용성 저하
+        - label: 잘못된 콘텐츠 게시
+        - label: 중복 TASK 또는 중복 PR
+        - label: Jules 사용량 낭비
+        - label: 배포 실패
+        - label: 데이터 손상 가능성
+        - label: 데이터 손실 가능성
+        - label: 개인정보 영향 가능성
+        - label: 보안 영향 가능성
+        - label: 비용 발생 가능성
+        - label: 외부 서비스 제한 초과
+    validations:
+      required: true
+
+  - type: dropdown
+    id: security_impact
+    attributes:
+      label: 보안 영향
+      options:
+        - 확인된 영향 없음
+        - 조사 중
+        - 비밀정보 노출 가능성
+        - 권한 오용 가능성
+        - 외부 접근 가능성
+        - 확인된 보안 사고
+    validations:
+      required: true
+
+  - type: dropdown
+    id: data_impact
+    attributes:
+      label: 데이터 영향
+      options:
+        - 확인된 영향 없음
+        - 조사 중
+        - 중복 데이터
+        - 잘못된 데이터
+        - 일부 데이터 손상 가능성
+        - 일부 데이터 손실 가능성
+        - 확인된 데이터 손상 또는 손실
+    validations:
+      required: true
+
+  - type: textarea
+    id: containment
+    attributes:
+      label: 즉시 완화 및 격리 조치
+      description: 추가 피해를 막기 위해 이미 수행한 조치를 작성합니다.
+      placeholder: |
+        예)
+        - AUTOMATION_ENABLED=false 설정
+        - 중복 PR에 do-not-merge 라벨 부착
+        - 관련 Workflow 취소
+        - Netlify 자동 배포 일시 중지
+    validations:
+      required: true
+
+  - type: textarea
+    id: rollback_plan
+    attributes:
+      label: 롤백 또는 복구 계획
+      description: 안전한 상태로 복구하기 위한 절차를 작성합니다.
+      placeholder: |
+        예)
+        1. 중복 Jules Session 상태 확인
+        2. 기준 PR 하나를 제외한 PR 닫기
+        3. project-state.json과 TASK Issue 상태 동기화
+        4. concurrency key 수정
+        5. dry-run 검증 후 자동화 재활성화
+    validations:
+      required: true
+
+  - type: textarea
+    id: suspected_cause
+    attributes:
+      label: 추정 원인
+      description: 현재 확인된 원인 또는 조사 중인 가설을 작성합니다.
+      placeholder: |
+        예)
+        workflow_dispatch와 repository_dispatch가 동시에 발생했지만
+        TASK ID 정규화 방식이 달라 서로 다른 concurrency group을 사용했다.
+    validations:
+      required: false
+
+  - type: textarea
+    id: resolution
+    attributes:
+      label: 해결 내용
+      description: 해결된 Incident라면 실제 복구 내용과 검증 결과를 작성합니다.
+      placeholder: |
+        예)
+        TASK ID를 대문자로 정규화한 후 concurrency group에 사용하도록 수정했다.
+
+        검증:
+        - 동일 TASK repository_dispatch 3회 전송
+        - Workflow Run 1개만 실행됨
+        - 중복 Jules Session 없음
+    validations:
+      required: false
+
+  - type: textarea
+    id: follow_up_tasks
+    attributes:
+      label: 후속 TASK
+      description: 재발 방지, 모니터링, 테스트 추가 작업을 작성합니다.
+      placeholder: |
+        - TASK-081: Dispatcher 중복 실행 테스트 추가
+        - TASK-082: Jules Session idempotency key 구현
+        - TASK-083: 중복 PR Reconciler 규칙 추가
+    validations:
+      required: false
+
+  - type: dropdown
+    id: automation_policy
+    attributes:
+      label: 자동화 재개 정책
+      options:
+        - 즉시 자동화 재개 가능
+        - 수정 PR 병합 후 재개
+        - Dry Run 검증 후 재개
+        - 사람 승인 후 재개
+        - 원인 분석 완료 전 재개 금지
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: incident_acknowledgement
+    attributes:
+      label: Incident 정보 확인
+      options:
+        - label: Issue에 API Key, Token, 비밀번호, 쿠키 또는 개인정보를 포함하지 않았습니다.
+          required: true
+        - label: 데이터 또는 보안 영향이 불확실한 경우 영향 없음으로 단정하지 않았습니다.
+          required: true
+        - label: 추가 피해 방지를 위한 자동화 중지 여부를 검토했습니다.
+          required: true
