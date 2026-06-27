@@ -3,12 +3,12 @@
   "projectId": "juleswhile",
   "stateAuthority": "github-issues-and-pull-requests",
   "status": "active",
-  "phase": "planning",
+  "phase": "operations",
   "primaryBranch": "main",
   "repository": {
     "fullName": "loopwhile/Juleswhile",
     "htmlUrl": "https://github.com/loopwhile/Juleswhile",
-    "julesSourceName": null
+    "julesSourceName": "sources/github/loopwhile/Juleswhile"
   },
   "projectGoal": {
     "schemaVersion": 1,
@@ -119,12 +119,12 @@
     "contentEnabled": false,
     "netlifyStatusEnabled": true,
     "mode": "guarded",
-    "pausedReason": "Bootstrap is incomplete. Keep automation disabled until schemas, scripts, workflows, and dry-run validation are complete."
+    "pausedReason": "Production automation smoke test passed. Automation remains disabled until explicitly enabled by the operator."
   },
   "taskSummary": {
     "total": 2,
     "draft": 0,
-    "ready": 1,
+    "ready": 0,
     "queued": 0,
     "dispatching": 0,
     "running": 0,
@@ -134,7 +134,7 @@
     "mergeReady": 0,
     "merged": 0,
     "deploying": 0,
-    "completed": 1,
+    "completed": 2,
     "failed": 0,
     "timeout": 0,
     "retryWait": 0,
@@ -146,7 +146,7 @@
     "activeSessions": [],
     "activePullRequests": [],
     "resourceLocks": [],
-    "lastReconciledAt": null
+    "lastReconciledAt": "2026-06-27T13:55:54.076595Z"
   },
   "quotas": {
     "date": null,
@@ -165,5 +165,5 @@
   },
   "lastEvent": null,
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-06-27T11:43:29Z"
+  "updatedAt": "2026-06-27T13:55:54.076595Z"
 }
