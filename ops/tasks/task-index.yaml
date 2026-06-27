@@ -1,7 +1,7 @@
 schema_version: 1
 project_id: juleswhile
 generated_at: "2026-06-27T00:00:00+09:00"
-updated_at: "2026-06-27T09:45:54Z"
+updated_at: "2026-06-27T09:57:28Z"
 
 defaults:
   approval_policy: reviewer
@@ -185,7 +185,7 @@ tasks:
     title: Harden Juleswhile control-plane workflows
     role: developer
     type: bug-fix
-    status: PR_OPENED
+    status: MERGE_READY
     priority: P0
     enabled: false
 
@@ -220,6 +220,7 @@ tasks:
       - TASK Manifest counts are validated against project-state taskSummary.
       - Workflow state and label mutations use GitHub REST APIs instead of gh edit commands.
       - Goal Issues are completed automatically after their Planner PR is merged.
+      - Solo-operator control-plane merges require the explicit approval:owner-approved label.
       - All Workflow YAML files parse successfully with the Node.js yaml package.
       - npm run ci passes.
       - Automation variables remain disabled.
@@ -282,7 +283,7 @@ tasks:
       goal_issue_number: 1
       issue_number: 3
       created_at: "2026-06-27T09:30:44Z"
-      updated_at: "2026-06-27T09:45:54Z"
+      updated_at: "2026-06-27T09:57:28Z"
       created_by: user
 
       tags:

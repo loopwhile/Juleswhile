@@ -240,12 +240,17 @@ jobs:
             }
           }
 
+          const ownerApproved = labels.has(
+            "approval:owner-approved",
+          );
+
           if (
             labels.has("human-approval-required") &&
-            state.reviewDecision !== "APPROVED"
+            state.reviewDecision !== "APPROVED" &&
+            !ownerApproved
           ) {
             blockers.push(
-              "A human approval is required but reviewDecision is not APPROVED",
+              "A human approval or explicit owner approval is required",
             );
           }
 
@@ -316,6 +321,7 @@ jobs:
               `| PR | #${state.number} |`,
               `| TASK | \`${taskId || "unknown"}\` |`,
               `| Review | \`${state.reviewDecision || "none"}\` |`,
+              `| Owner approval | \`${ownerApproved}\` |`,
               `| Mergeable | \`${state.mergeable || "unknown"}\` |`,
               `| Merge state | \`${state.mergeStateStatus || "unknown"}\` |`,
               `| Merge allowed | \`${shouldMerge}\` |`,
