@@ -1,0 +1,556 @@
+name: "04 · Auto Merge"
+
+on:
+  workflow_run:
+    workflows:
+      - "03 · PR Validation"
+    types:
+      - completed
+
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "평가 또는 병합할 Pull Request 번호"
+        required: true
+        type: number
+
+      dry_run:
+        description: "병합하지 않고 정책만 평가"
+        required: false
+        default: true
+        type: boolean
+
+      force:
+        description: "validation:passed 라벨 확인만 우회"
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: >-
+    auto-merge-${{
+      github.event.workflow_run.pull_requests[0].number ||
+      inputs.pr_number ||
+      github.run_id
+    }}
+  cancel-in-progress: false
+
+env:
+  MERGE_METHOD: ${{ vars.PR_MERGE_METHOD || 'squash' }}
+
+jobs:
+  merge:
+    name: Evaluate and merge validated PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Resolve Pull Request
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_PR_NUMBER: ${{ inputs.pr_number }}
+          MANUAL_DRY_RUN: ${{ inputs.dry_run }}
+          MANUAL_FORCE: ${{ inputs.force }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          PR_NUMBER=""
+          DRY_RUN=false
+          FORCE_RUN=false
+          VALIDATION_CONCLUSION="success"
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            PR_NUMBER="${MANUAL_PR_NUMBER:-}"
+            DRY_RUN="${MANUAL_DRY_RUN:-true}"
+            FORCE_RUN="${MANUAL_FORCE:-false}"
+          else
+            VALIDATION_CONCLUSION="$(
+              jq -r \
+                '.workflow_run.conclusion // "unknown"' \
+                "$GITHUB_EVENT_PATH"
+            )"
+
+            PR_NUMBER="$(
+              jq -r \
+                '.workflow_run.pull_requests[0].number // empty' \
+                "$GITHUB_EVENT_PATH"
+            )"
+
+            if [[ -z "$PR_NUMBER" ]]; then
+              HEAD_SHA="$(
+                jq -r \
+                  '.workflow_run.head_sha // empty' \
+                  "$GITHUB_EVENT_PATH"
+              )"
+
+              if [[ -n "$HEAD_SHA" ]]; then
+                PR_NUMBER="$(
+                  gh api \
+                    "repos/${REPOSITORY}/commits/${HEAD_SHA}/pulls" \
+                    --jq '
+                      map(
+                        select(
+                          .state == "open" and
+                          .base.ref == "main"
+                        )
+                      )
+                      | first
+                      | .number // empty
+                    '
+                )"
+              fi
+            fi
+          fi
+
+          if [[ "$VALIDATION_CONCLUSION" != "success" ]]; then
+            echo "::notice::PR Validation이 성공하지 않아 병합하지 않습니다."
+            echo "should_continue=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::notice::병합할 Pull Request를 찾지 못했습니다."
+            echo "should_continue=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          case "$DRY_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::dry_run은 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          case "$FORCE_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::force는 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "force=${FORCE_RUN}" >> "$GITHUB_OUTPUT"
+          echo "should_continue=true" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch Pull Request state
+        if: steps.resolve.outputs.should_continue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RESOLVED_PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh pr view "$RESOLVED_PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --json \
+              number,title,body,state,isDraft,isCrossRepository,\
+          baseRefName,headRefName,headRefOid,mergeable,mergeStateStatus,\
+          reviewDecision,labels,statusCheckRollup,url \
+            > "${RUNNER_TEMP}/pr-state.json"
+
+      - name: Evaluate merge policy
+        id: policy
+        if: steps.resolve.outputs.should_continue == 'true'
+        env:
+          FORCE_RUN: ${{ steps.resolve.outputs.force }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const state = JSON.parse(
+            fs.readFileSync(
+              `${process.env.RUNNER_TEMP}/pr-state.json`,
+              "utf8",
+            ),
+          );
+
+          const labels = new Set(
+            (state.labels || []).map((label) => label.name),
+          );
+
+          const blockedLabels = [
+            "do-not-merge",
+            "state:blocked",
+            "security-review-required",
+            "merge:manual-only",
+            "validation:failed",
+          ];
+
+          const blockers = [];
+
+          if (state.state !== "OPEN") {
+            blockers.push(`PR state is ${state.state}`);
+          }
+
+          if (state.isDraft) {
+            blockers.push("PR is draft");
+          }
+
+          if (state.isCrossRepository) {
+            blockers.push("Cross-repository PR is not auto-merged");
+          }
+
+          if (state.baseRefName !== "main") {
+            blockers.push(`Base branch is ${state.baseRefName}`);
+          }
+
+          if (
+            !String(state.body || "").includes(
+              "<!-- juleswhile:task-pr -->",
+            )
+          ) {
+            blockers.push("Juleswhile PR marker is missing");
+          }
+
+          if (!labels.has("juleswhile:managed")) {
+            blockers.push("juleswhile:managed label is missing");
+          }
+
+          if (
+            process.env.FORCE_RUN !== "true" &&
+            !labels.has("validation:passed")
+          ) {
+            blockers.push("validation:passed label is missing");
+          }
+
+          for (const label of blockedLabels) {
+            if (labels.has(label)) {
+              blockers.push(`Blocked by label: ${label}`);
+            }
+          }
+
+          if (
+            labels.has("human-approval-required") &&
+            state.reviewDecision !== "APPROVED"
+          ) {
+            blockers.push(
+              "A human approval is required but reviewDecision is not APPROVED",
+            );
+          }
+
+          if (state.mergeable === "CONFLICTING") {
+            blockers.push("Pull Request has merge conflicts");
+          }
+
+          if (state.mergeStateStatus === "DIRTY") {
+            blockers.push("Pull Request merge state is DIRTY");
+          }
+
+          const titleMatch = String(state.title || "").match(
+            /^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)\]/,
+          );
+
+          const taskId = titleMatch ? titleMatch[1] : "";
+
+          if (!taskId) {
+            blockers.push("TASK or Goal identifier is missing from title");
+          }
+
+          const taskIssueMatch = String(state.body || "").match(
+            /TASK Issue:\s*(?:https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/)?#?([0-9]+)/i,
+          );
+
+          const taskIssueNumber = taskIssueMatch
+            ? taskIssueMatch[1]
+            : "";
+
+          const shouldMerge = blockers.length === 0;
+
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            [
+              `should_merge=${shouldMerge}`,
+              `task_id=${taskId}`,
+              `task_issue_number=${taskIssueNumber}`,
+              `head_sha=${state.headRefOid || ""}`,
+              "",
+            ].join("\n"),
+          );
+
+          fs.appendFileSync(
+            process.env.GITHUB_STEP_SUMMARY,
+            [
+              "# Auto Merge Evaluation",
+              "",
+              "| 항목 | 값 |",
+              "|---|---|",
+              `| PR | #${state.number} |`,
+              `| TASK | \`${taskId || "unknown"}\` |`,
+              `| Review | \`${state.reviewDecision || "none"}\` |`,
+              `| Mergeable | \`${state.mergeable || "unknown"}\` |`,
+              `| Merge state | \`${state.mergeStateStatus || "unknown"}\` |`,
+              `| Merge allowed | \`${shouldMerge}\` |`,
+              "",
+              "## Blockers",
+              "",
+              ...(blockers.length > 0
+                ? blockers.map((blocker) => `- ${blocker}`)
+                : ["- 없음"]),
+              "",
+            ].join("\n"),
+          );
+          NODE
+
+      - name: Stop when merge policy blocks the PR
+        if: >-
+          steps.resolve.outputs.should_continue == 'true' &&
+          steps.policy.outputs.should_merge != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RESOLVED_PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "state:merge-blocked" \
+            --repo "$REPOSITORY" \
+            --color "D93F0B" \
+            --description "Automatic merge policy blocked this PR" \
+            --force
+
+          gh pr edit "$RESOLVED_PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --add-label "state:merge-blocked" \
+            || true
+
+          echo "::notice::자동 병합 정책이 Pull Request를 차단했습니다."
+
+      - name: Validate merge method
+        if: steps.policy.outputs.should_merge == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          case "$MERGE_METHOD" in
+            squash|merge|rebase)
+              ;;
+            *)
+              echo "::error::PR_MERGE_METHOD는 squash, merge, rebase 중 하나여야 합니다."
+              exit 1
+              ;;
+          esac
+
+      - name: Dry-run merge result
+        if: >-
+          steps.policy.outputs.should_merge == 'true' &&
+          steps.resolve.outputs.dry_run == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          {
+            echo
+            echo "# Dry Run"
+            echo
+            echo "자동 병합 정책을 통과했지만 Pull Request를 병합하지 않았습니다."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Merge Pull Request
+        id: merge
+        if: >-
+          steps.policy.outputs.should_merge == 'true' &&
+          steps.resolve.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RESOLVED_PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.policy.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          MERGE_ARGS=(
+            "$RESOLVED_PR_NUMBER"
+            --repo
+            "$REPOSITORY"
+            --delete-branch
+            --match-head-commit
+            "$HEAD_SHA"
+          )
+
+          case "$MERGE_METHOD" in
+            squash)
+              MERGE_ARGS+=(--squash)
+              ;;
+
+            merge)
+              MERGE_ARGS+=(--merge)
+              ;;
+
+            rebase)
+              MERGE_ARGS+=(--rebase)
+              ;;
+          esac
+
+          gh pr merge "${MERGE_ARGS[@]}"
+
+          gh pr view "$RESOLVED_PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --json mergedAt,mergeCommit,state \
+            > "${RUNNER_TEMP}/merge-result.json"
+
+          MERGED_AT="$(
+            jq -r '.mergedAt // empty' \
+              "${RUNNER_TEMP}/merge-result.json"
+          )"
+
+          MERGE_SHA="$(
+            jq -r '.mergeCommit.oid // empty' \
+              "${RUNNER_TEMP}/merge-result.json"
+          )"
+
+          if [[ -z "$MERGED_AT" ]]; then
+            echo "::error::Pull Request가 실제로 병합되지 않았습니다."
+            exit 1
+          fi
+
+          echo "merge_sha=${MERGE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "merged_at=${MERGED_AT}" >> "$GITHUB_OUTPUT"
+
+      - name: Complete linked TASK Issue
+        if: >-
+          steps.merge.outcome == 'success' &&
+          steps.policy.outputs.task_issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TASK_ISSUE_NUMBER: ${{ steps.policy.outputs.task_issue_number }}
+          TASK_ID: ${{ steps.policy.outputs.task_id }}
+          RESOLVED_PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "state:completed" \
+            --repo "$REPOSITORY" \
+            --color "0E8A16" \
+            --description "TASK completed and merged into main" \
+            --force
+
+          gh issue edit "$TASK_ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --remove-label "state:running" \
+            --remove-label "state:validating" \
+            --add-label "state:completed" \
+            || true
+
+          gh issue comment "$TASK_ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body "$(
+              cat <<EOF
+          <!-- juleswhile:task-completed -->
+
+          ## TASK 완료
+
+          \`${TASK_ID}\`의 Pull Request가 \`main\`에 병합됐습니다.
+
+          - Pull Request: #${RESOLVED_PR_NUMBER}
+          - Merge Commit: \`${MERGE_SHA}\`
+          - Merge Method: \`${MERGE_METHOD}\`
+
+          후속 TASK 선택은 Next TASK Workflow가 처리합니다.
+          EOF
+            )"
+
+          gh issue close "$TASK_ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --reason completed
+
+      - name: Dispatch next-task event
+        if: steps.merge.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RESOLVED_PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          TASK_ID: ${{ steps.policy.outputs.task_id }}
+          TASK_ISSUE_NUMBER: ${{ steps.policy.outputs.task_issue_number }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          PAYLOAD_FILE="${RUNNER_TEMP}/pr-merged-dispatch.json"
+
+          jq -n \
+            --arg task_id "$TASK_ID" \
+            --arg pr_number "$RESOLVED_PR_NUMBER" \
+            --arg task_issue_number "$TASK_ISSUE_NUMBER" \
+            --arg merge_sha "$MERGE_SHA" \
+            '{
+              event_type: "pr_merged",
+              client_payload: {
+                task_id: $task_id,
+                pr_number: $pr_number,
+                task_issue_number: $task_issue_number,
+                merge_sha: $merge_sha,
+                dry_run: false
+              }
+            }' \
+            > "$PAYLOAD_FILE"
+
+          gh api \
+            --method POST \
+            "repos/${REPOSITORY}/dispatches" \
+            --input "$PAYLOAD_FILE"
+
+      - name: Record merge failure
+        if: >-
+          failure() &&
+          steps.resolve.outputs.should_continue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RESOLVED_PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "state:merge-failed" \
+            --repo "$REPOSITORY" \
+            --color "D73A4A" \
+            --description "Automatic merge attempt failed" \
+            --force
+
+          gh pr edit "$RESOLVED_PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --add-label "state:merge-failed" \
+            || true
+
+          gh pr comment "$RESOLVED_PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body "$(
+              cat <<EOF
+          ## 자동 병합 실패
+
+          Pull Request가 정책 평가를 통과했지만 병합 과정에서 실패했습니다.
+
+          - Workflow Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Branch Ruleset, Required Checks, Review 상태와 Merge Conflict를 확인하십시오.
+          관리자 권한을 이용한 강제 병합은 수행하지 않았습니다.
+          EOF
+            )" \
+            || true

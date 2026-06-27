@@ -1,0 +1,434 @@
+name: "07 · Content Schedule"
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+
+  workflow_dispatch:
+    inputs:
+      template_id:
+        description: "반복 콘텐츠 TASK Template ID"
+        required: false
+        type: string
+
+      content_type:
+        description: "생성할 콘텐츠 유형"
+        required: false
+        default: "scheduled-content"
+        type: string
+
+      topic:
+        description: "이번 실행의 주제 또는 조사 범위"
+        required: false
+        type: string
+
+      period_key:
+        description: "중복 방지용 기간 식별자"
+        required: false
+        type: string
+
+      dry_run:
+        description: "Issue와 Jules Session을 만들지 않고 생성 결과만 확인"
+        required: false
+        default: true
+        type: boolean
+
+      force:
+        description: "중복 및 자동화 비활성화 정책을 제한적으로 우회"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: project-orchestration-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  AUTOMATION_ENABLED: ${{ vars.AUTOMATION_ENABLED || 'false' }}
+  CONTENT_AUTOMATION_ENABLED: ${{ vars.CONTENT_AUTOMATION_ENABLED || 'false' }}
+  CONTENT_TASK_TEMPLATE_ID: ${{ vars.CONTENT_TASK_TEMPLATE_ID }}
+  CONTENT_DEFAULT_TYPE: ${{ vars.CONTENT_DEFAULT_TYPE || 'scheduled-content' }}
+  CONTENT_DEFAULT_TOPIC: ${{ vars.CONTENT_DEFAULT_TOPIC || 'Project-defined content cycle' }}
+  CONTENT_TIMEZONE: ${{ vars.CONTENT_TIMEZONE || 'Asia/Seoul' }}
+
+jobs:
+  schedule-content:
+    name: Materialize one recurring content TASK
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Resolve content cycle
+        id: input
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_TEMPLATE_ID: ${{ inputs.template_id }}
+          MANUAL_CONTENT_TYPE: ${{ inputs.content_type }}
+          MANUAL_TOPIC: ${{ inputs.topic }}
+          MANUAL_PERIOD_KEY: ${{ inputs.period_key }}
+          MANUAL_DRY_RUN: ${{ inputs.dry_run }}
+          MANUAL_FORCE: ${{ inputs.force }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            TEMPLATE_ID="${MANUAL_TEMPLATE_ID:-${CONTENT_TASK_TEMPLATE_ID:-}}"
+            CONTENT_TYPE="${MANUAL_CONTENT_TYPE:-$CONTENT_DEFAULT_TYPE}"
+            TOPIC="${MANUAL_TOPIC:-$CONTENT_DEFAULT_TOPIC}"
+            PERIOD_KEY="${MANUAL_PERIOD_KEY:-}"
+            DRY_RUN="${MANUAL_DRY_RUN:-true}"
+            FORCE_RUN="${MANUAL_FORCE:-false}"
+          else
+            TEMPLATE_ID="${CONTENT_TASK_TEMPLATE_ID:-}"
+            CONTENT_TYPE="$CONTENT_DEFAULT_TYPE"
+            TOPIC="$CONTENT_DEFAULT_TOPIC"
+            PERIOD_KEY=""
+            DRY_RUN=false
+            FORCE_RUN=false
+          fi
+
+          TEMPLATE_ID="$(
+            printf '%s' "$TEMPLATE_ID" \
+              | tr '[:lower:]' '[:upper:]' \
+              | xargs
+          )"
+
+          CONTENT_TYPE="$(
+            printf '%s' "$CONTENT_TYPE" \
+              | xargs
+          )"
+
+          TOPIC="$(
+            printf '%s' "$TOPIC" \
+              | xargs
+          )"
+
+          if [[ ! "$TEMPLATE_ID" =~ ^TASK-[0-9]{3,}$ ]]; then
+            echo "::error::CONTENT_TASK_TEMPLATE_ID는 TASK-000 형식이어야 합니다."
+            exit 1
+          fi
+
+          if [[ -z "$CONTENT_TYPE" ]]; then
+            echo "::error::content_type이 비어 있습니다."
+            exit 1
+          fi
+
+          if [[ -z "$TOPIC" ]]; then
+            echo "::error::topic이 비어 있습니다."
+            exit 1
+          fi
+
+          if [[ -z "$PERIOD_KEY" ]]; then
+            PERIOD_KEY="$(
+              date -u '+%Y%m%dT%H00Z'
+            )"
+          fi
+
+          SAFE_CONTENT_TYPE="$(
+            printf '%s' "$CONTENT_TYPE" \
+              | tr '[:upper:]' '[:lower:]' \
+              | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+          )"
+
+          SAFE_PERIOD_KEY="$(
+            printf '%s' "$PERIOD_KEY" \
+              | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^-+//; s/-+$//'
+          )"
+
+          INSTANCE_KEY="content-${SAFE_CONTENT_TYPE}-${SAFE_PERIOD_KEY}"
+
+          case "$DRY_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::dry_run은 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          case "$FORCE_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::force는 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          if [[ "$DRY_RUN" != "true" ]] \
+            && [[ "$FORCE_RUN" != "true" ]]; then
+            if [[ "$AUTOMATION_ENABLED" != "true" ]]; then
+              echo "::notice::AUTOMATION_ENABLED가 true가 아닙니다."
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if [[ "$CONTENT_AUTOMATION_ENABLED" != "true" ]]; then
+              echo "::notice::CONTENT_AUTOMATION_ENABLED가 true가 아닙니다."
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          echo "template_id=${TEMPLATE_ID}" >> "$GITHUB_OUTPUT"
+          echo "content_type=${CONTENT_TYPE}" >> "$GITHUB_OUTPUT"
+          echo "topic=${TOPIC}" >> "$GITHUB_OUTPUT"
+          echo "period_key=${PERIOD_KEY}" >> "$GITHUB_OUTPUT"
+          echo "instance_key=${INSTANCE_KEY}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "force=${FORCE_RUN}" >> "$GITHUB_OUTPUT"
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout main
+        if: steps.input.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        if: steps.input.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Validate content scheduling files
+        if: steps.input.outputs.should_run == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          REQUIRED_FILES=(
+            "package.json"
+            "ops/tasks/task-index.yaml"
+            "ops/scripts/materialize-issues.ts"
+          )
+
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error::필수 콘텐츠 자동화 파일이 없습니다: ${file}"
+              exit 1
+            fi
+          done
+
+      - name: Install dependencies
+        if: steps.input.outputs.should_run == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -f package-lock.json ]]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Instantiate recurring content TASK
+        id: materialize
+        if: steps.input.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEMPLATE_ID: ${{ steps.input.outputs.template_id }}
+          CONTENT_TYPE: ${{ steps.input.outputs.content_type }}
+          TOPIC: ${{ steps.input.outputs.topic }}
+          PERIOD_KEY: ${{ steps.input.outputs.period_key }}
+          INSTANCE_KEY: ${{ steps.input.outputs.instance_key }}
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+          FORCE_RUN: ${{ steps.input.outputs.force }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          RESULT_FILE="${RUNNER_TEMP}/content-task-result.json"
+
+          COMMAND=(
+            npm
+            run
+            materialize:issues
+            --
+            --mode
+            instantiate
+            --template-id
+            "$TEMPLATE_ID"
+            --instance-key
+            "$INSTANCE_KEY"
+            --content-type
+            "$CONTENT_TYPE"
+            --topic
+            "$TOPIC"
+            --period-key
+            "$PERIOD_KEY"
+            --timezone
+            "$CONTENT_TIMEZONE"
+            --response-file
+            "$RESULT_FILE"
+          )
+
+          if [[ "$DRY_RUN" == "true" ]]; then
+            COMMAND+=(--dry-run)
+          fi
+
+          if [[ "$FORCE_RUN" == "true" ]]; then
+            COMMAND+=(--force)
+          fi
+
+          "${COMMAND[@]}"
+
+          jq empty "$RESULT_FILE"
+
+          CREATED="$(
+            jq -r '.created // false' \
+              "$RESULT_FILE"
+          )"
+
+          DUPLICATE="$(
+            jq -r '.duplicate // false' \
+              "$RESULT_FILE"
+          )"
+
+          DISPATCHABLE="$(
+            jq -r '.dispatchable // false' \
+              "$RESULT_FILE"
+          )"
+
+          TASK_ID="$(
+            jq -r '.taskId // empty' \
+              "$RESULT_FILE"
+          )"
+
+          ISSUE_NUMBER="$(
+            jq -r '.issueNumber // empty' \
+              "$RESULT_FILE"
+          )"
+
+          REASON="$(
+            jq -r '.reason // "No reason supplied"' \
+              "$RESULT_FILE"
+          )"
+
+          if [[ "$DISPATCHABLE" == "true" ]]; then
+            if [[ ! "$TASK_ID" =~ ^TASK-[0-9]{3,}$ ]]; then
+              echo "::error::생성된 TASK ID 형식이 올바르지 않습니다."
+              exit 1
+            fi
+
+            if [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+              echo "::error::생성된 TASK Issue 번호가 올바르지 않습니다."
+              exit 1
+            fi
+          fi
+
+          echo "created=${CREATED}" >> "$GITHUB_OUTPUT"
+          echo "duplicate=${DUPLICATE}" >> "$GITHUB_OUTPUT"
+          echo "dispatchable=${DISPATCHABLE}" >> "$GITHUB_OUTPUT"
+          echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
+          echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+
+      - name: Label scheduled content TASK
+        if: >-
+          steps.materialize.outputs.dispatchable == 'true' &&
+          steps.input.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.materialize.outputs.issue_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "task:scheduled-content" \
+            --repo "$REPOSITORY" \
+            --color "1D76DB" \
+            --description "Recurring scheduled content TASK" \
+            --force
+
+          gh label create "state:queued" \
+            --repo "$REPOSITORY" \
+            --color "C2E0C6" \
+            --description "TASK selected and waiting for Jules dispatch" \
+            --force
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --add-label "task:scheduled-content,state:queued"
+
+      - name: Dispatch scheduled content TASK
+        if: >-
+          steps.materialize.outputs.dispatchable == 'true' &&
+          steps.input.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TASK_ID: ${{ steps.materialize.outputs.task_id }}
+          ISSUE_NUMBER: ${{ steps.materialize.outputs.issue_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          PAYLOAD_FILE="${RUNNER_TEMP}/content-task-dispatch.json"
+
+          jq -n \
+            --arg task_id "$TASK_ID" \
+            --argjson issue_number "$ISSUE_NUMBER" \
+            '{
+              event_type: "task_ready",
+              client_payload: {
+                task_id: $task_id,
+                issue_number: $issue_number,
+                dry_run: false,
+                force: false,
+                source: "content-schedule"
+              }
+            }' \
+            > "$PAYLOAD_FILE"
+
+          gh api \
+            --method POST \
+            "repos/${REPOSITORY}/dispatches" \
+            --input "$PAYLOAD_FILE"
+
+      - name: Write content schedule summary
+        if: steps.input.outputs.should_run == 'true'
+        env:
+          TEMPLATE_ID: ${{ steps.input.outputs.template_id }}
+          CONTENT_TYPE: ${{ steps.input.outputs.content_type }}
+          TOPIC: ${{ steps.input.outputs.topic }}
+          INSTANCE_KEY: ${{ steps.input.outputs.instance_key }}
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+          CREATED: ${{ steps.materialize.outputs.created }}
+          DUPLICATE: ${{ steps.materialize.outputs.duplicate }}
+          DISPATCHABLE: ${{ steps.materialize.outputs.dispatchable }}
+          TASK_ID: ${{ steps.materialize.outputs.task_id }}
+          ISSUE_NUMBER: ${{ steps.materialize.outputs.issue_number }}
+          REASON: ${{ steps.materialize.outputs.reason }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          {
+            echo "# Scheduled Content Cycle"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| Template | \`${TEMPLATE_ID}\` |"
+            echo "| Content type | \`${CONTENT_TYPE}\` |"
+            echo "| Topic | ${TOPIC} |"
+            echo "| Instance key | \`${INSTANCE_KEY}\` |"
+            echo "| Timezone metadata | \`${CONTENT_TIMEZONE}\` |"
+            echo "| Dry Run | \`${DRY_RUN}\` |"
+            echo "| Created | \`${CREATED}\` |"
+            echo "| Duplicate | \`${DUPLICATE}\` |"
+            echo "| Dispatchable | \`${DISPATCHABLE}\` |"
+            echo "| TASK | \`${TASK_ID:-none}\` |"
+            echo "| Issue | \`${ISSUE_NUMBER:-none}\` |"
+            echo "| Reason | ${REASON} |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,281 @@
+name: "06 · Reconciler"
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "상태를 변경하지 않고 복구 계획만 확인"
+        required: false
+        default: true
+        type: boolean
+
+      force:
+        description: "AUTOMATION_ENABLED 상태를 무시"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: project-orchestration-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  AUTOMATION_ENABLED: ${{ vars.AUTOMATION_ENABLED || 'false' }}
+  STALE_DISPATCHING_MINUTES: ${{ vars.STALE_DISPATCHING_MINUTES || '20' }}
+  STALE_RUNNING_MINUTES: ${{ vars.STALE_RUNNING_MINUTES || '180' }}
+  STALE_VALIDATING_MINUTES: ${{ vars.STALE_VALIDATING_MINUTES || '60' }}
+  SESSION_TIMEOUT_MINUTES: ${{ vars.SESSION_TIMEOUT_MINUTES || '240' }}
+  MAX_CORRECTIONS: ${{ vars.DEFAULT_MAX_CORRECTIONS || '2' }}
+
+jobs:
+  reconcile:
+    name: Reconcile project state
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Resolve Reconciler mode
+        id: input
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_DRY_RUN: ${{ inputs.dry_run }}
+          MANUAL_FORCE: ${{ inputs.force }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            DRY_RUN="${MANUAL_DRY_RUN:-true}"
+            FORCE_RUN="${MANUAL_FORCE:-false}"
+          else
+            DRY_RUN=false
+            FORCE_RUN=false
+          fi
+
+          if [[ "$AUTOMATION_ENABLED" != "true" ]] \
+            && [[ "$DRY_RUN" != "true" ]] \
+            && [[ "$FORCE_RUN" != "true" ]]; then
+            echo "::notice::자동화가 비활성화되어 Scheduled Reconciler를 건너뜁니다."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "force=${FORCE_RUN}" >> "$GITHUB_OUTPUT"
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout main
+        if: steps.input.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        if: steps.input.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Validate Reconciler files
+        if: steps.input.outputs.should_run == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          REQUIRED_FILES=(
+            "package.json"
+            "ops/tasks/task-index.yaml"
+            "ops/state/project-state.json"
+            "ops/scripts/reconcile-project.ts"
+          )
+
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error::필수 Reconciler 파일이 없습니다: ${file}"
+              exit 1
+            fi
+          done
+
+      - name: Install dependencies
+        if: steps.input.outputs.should_run == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -f package-lock.json ]]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Reconcile Juleswhile state
+        id: reconcile
+        if: steps.input.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          RESULT_FILE="${RUNNER_TEMP}/reconcile-result.json"
+
+          COMMAND=(
+            npm
+            run
+            reconcile:project
+            --
+            --response-file
+            "$RESULT_FILE"
+            --stale-dispatching-minutes
+            "$STALE_DISPATCHING_MINUTES"
+            --stale-running-minutes
+            "$STALE_RUNNING_MINUTES"
+            --stale-validating-minutes
+            "$STALE_VALIDATING_MINUTES"
+            --session-timeout-minutes
+            "$SESSION_TIMEOUT_MINUTES"
+            --max-corrections
+            "$MAX_CORRECTIONS"
+          )
+
+          if [[ "$DRY_RUN" == "true" ]]; then
+            COMMAND+=(--dry-run)
+          else
+            COMMAND+=(--apply)
+          fi
+
+          "${COMMAND[@]}"
+
+          jq empty "$RESULT_FILE"
+
+          SHOULD_SCHEDULE_NEXT="$(
+            jq -r '.shouldScheduleNext // false' \
+              "$RESULT_FILE"
+          )"
+
+          SCANNED="$(
+            jq -r '.summary.scanned // 0' \
+              "$RESULT_FILE"
+          )"
+
+          REPAIRED="$(
+            jq -r '.summary.repaired // 0' \
+              "$RESULT_FILE"
+          )"
+
+          STUCK="$(
+            jq -r '.summary.stuck // 0' \
+              "$RESULT_FILE"
+          )"
+
+          BLOCKED="$(
+            jq -r '.summary.blocked // 0' \
+              "$RESULT_FILE"
+          )"
+
+          RETRIED="$(
+            jq -r '.summary.retried // 0' \
+              "$RESULT_FILE"
+          )"
+
+          INCIDENTS="$(
+            jq -r '.summary.incidents // 0' \
+              "$RESULT_FILE"
+          )"
+
+          echo "should_schedule_next=${SHOULD_SCHEDULE_NEXT}" \
+            >> "$GITHUB_OUTPUT"
+          echo "scanned=${SCANNED}" >> "$GITHUB_OUTPUT"
+          echo "repaired=${REPAIRED}" >> "$GITHUB_OUTPUT"
+          echo "stuck=${STUCK}" >> "$GITHUB_OUTPUT"
+          echo "blocked=${BLOCKED}" >> "$GITHUB_OUTPUT"
+          echo "retried=${RETRIED}" >> "$GITHUB_OUTPUT"
+          echo "incidents=${INCIDENTS}" >> "$GITHUB_OUTPUT"
+          echo "result_file=${RESULT_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger next TASK evaluation
+        if: >-
+          steps.reconcile.outputs.should_schedule_next == 'true' &&
+          steps.input.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          PAYLOAD_FILE="${RUNNER_TEMP}/reconcile-ready-dispatch.json"
+
+          jq -n \
+            '{
+              event_type: "reconcile_ready",
+              client_payload: {
+                task_id: "",
+                dry_run: false,
+                reason: "reconciler"
+              }
+            }' \
+            > "$PAYLOAD_FILE"
+
+          gh api \
+            --method POST \
+            "repos/${REPOSITORY}/dispatches" \
+            --input "$PAYLOAD_FILE"
+
+      - name: Write Reconciler summary
+        if: steps.input.outputs.should_run == 'true'
+        env:
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+          SCANNED: ${{ steps.reconcile.outputs.scanned }}
+          REPAIRED: ${{ steps.reconcile.outputs.repaired }}
+          STUCK: ${{ steps.reconcile.outputs.stuck }}
+          BLOCKED: ${{ steps.reconcile.outputs.blocked }}
+          RETRIED: ${{ steps.reconcile.outputs.retried }}
+          INCIDENTS: ${{ steps.reconcile.outputs.incidents }}
+          SHOULD_SCHEDULE_NEXT: ${{ steps.reconcile.outputs.should_schedule_next }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          {
+            echo "# Juleswhile Reconciler"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| Dry Run | \`${DRY_RUN}\` |"
+            echo "| Scanned | \`${SCANNED}\` |"
+            echo "| Repaired | \`${REPAIRED}\` |"
+            echo "| Stuck | \`${STUCK}\` |"
+            echo "| Retried | \`${RETRIED}\` |"
+            echo "| Blocked | \`${BLOCKED}\` |"
+            echo "| Incidents | \`${INCIDENTS}\` |"
+            echo "| Schedule next TASK | \`${SHOULD_SCHEDULE_NEXT}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Reconciler report
+        if: always() && steps.reconcile.outputs.result_file != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: >-
+            reconciler-report-${{
+              github.run_id
+            }}-${{
+              github.run_attempt
+            }}
+          path: ${{ steps.reconcile.outputs.result_file }}
+          if-no-files-found: warn
+          retention-days: 14

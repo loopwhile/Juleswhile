@@ -1,0 +1,487 @@
+name: "03 · PR Validation"
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions: {}
+
+concurrency:
+  group: >-
+    pr-validation-${{
+      github.event.pull_request.number
+    }}-${{
+      github.event.pull_request.head.sha
+    }}
+  cancel-in-progress: true
+
+env:
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+  ALLOW_FORK_PRS: ${{ vars.ALLOW_FORK_PRS || 'false' }}
+
+jobs:
+  validate:
+    name: Validate PR contract and project
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+
+    outputs:
+      task_id: ${{ steps.metadata.outputs.task_id }}
+      task_issue_number: ${{ steps.metadata.outputs.task_issue_number }}
+      control_plane_change: ${{ steps.scope.outputs.control_plane_change }}
+
+    steps:
+      - name: Validate Pull Request metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const event = JSON.parse(
+            fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"),
+          );
+
+          const pullRequest = event.pull_request;
+
+          if (!pullRequest) {
+            throw new Error("Pull Request event payload가 없습니다.");
+          }
+
+          const title = String(pullRequest.title || "").trim();
+          const body = String(pullRequest.body || "");
+          const baseBranch = String(pullRequest.base?.ref || "");
+          const isCrossRepository =
+            pullRequest.head?.repo?.full_name !== pullRequest.base?.repo?.full_name;
+
+          const titlePattern =
+            /^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)\]\s+.+$/;
+
+          const titleMatch = title.match(titlePattern);
+
+          if (!titleMatch) {
+            throw new Error(
+              "PR 제목은 [TASK-000], [GOAL-0] 또는 " +
+              "[CORRECTION-ID] 형식으로 시작해야 합니다.",
+            );
+          }
+
+          if (baseBranch !== "main") {
+            throw new Error(
+              `PR 대상 브랜치는 main이어야 합니다: ${baseBranch}`,
+            );
+          }
+
+          if (!body.includes("<!-- juleswhile:task-pr -->")) {
+            throw new Error(
+              "Juleswhile Pull Request Template 식별자가 없습니다.",
+            );
+          }
+
+          if (
+            isCrossRepository &&
+            process.env.ALLOW_FORK_PRS !== "true"
+          ) {
+            throw new Error(
+              "외부 Fork Pull Request는 기본 정책에서 허용되지 않습니다.",
+            );
+          }
+
+          const taskId = titleMatch[1];
+
+          const taskIssueMatch = body.match(
+            /TASK Issue:\s*(?:https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/)?#?([0-9]+)/i,
+          );
+
+          const taskIssueNumber = taskIssueMatch
+            ? taskIssueMatch[1]
+            : "";
+
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            [
+              `task_id=${taskId}`,
+              `task_issue_number=${taskIssueNumber}`,
+              `is_cross_repository=${isCrossRepository}`,
+              "",
+            ].join("\n"),
+          );
+
+          fs.appendFileSync(
+            process.env.GITHUB_STEP_SUMMARY,
+            [
+              "# Pull Request Metadata",
+              "",
+              "| 항목 | 값 |",
+              "|---|---|",
+              `| PR | #${pullRequest.number} |`,
+              `| TASK | \`${taskId}\` |`,
+              `| TASK Issue | \`${taskIssueNumber || "not-specified"}\` |`,
+              `| Base | \`${baseBranch}\` |`,
+              `| Head | \`${pullRequest.head?.ref || "unknown"}\` |`,
+              `| Cross repository | \`${isCrossRepository}\` |`,
+              "",
+            ].join("\n"),
+          );
+          NODE
+
+      - name: Checkout Pull Request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect changed files and control-plane changes
+        id: scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          CHANGED_FILES="${RUNNER_TEMP}/changed-files.txt"
+
+          git diff \
+            --name-only \
+            --diff-filter=ACDMRTUXB \
+            "$BASE_SHA" \
+            "$HEAD_SHA" \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u \
+            > "$CHANGED_FILES"
+
+          if [[ ! -s "$CHANGED_FILES" ]]; then
+            echo "::error::변경된 파일이 없습니다."
+            exit 1
+          fi
+
+          CONTROL_PLANE_CHANGE=false
+
+          while IFS= read -r file; do
+            case "$file" in
+              AGENTS.md)
+                CONTROL_PLANE_CHANGE=true
+                ;;
+
+              .github/workflows/*)
+                CONTROL_PLANE_CHANGE=true
+                ;;
+
+              .github/ISSUE_TEMPLATE/*)
+                CONTROL_PLANE_CHANGE=true
+                ;;
+
+              .github/pull_request_template.md)
+                CONTROL_PLANE_CHANGE=true
+                ;;
+
+              ops/schemas/*)
+                CONTROL_PLANE_CHANGE=true
+                ;;
+
+              ops/scripts/*)
+                CONTROL_PLANE_CHANGE=true
+                ;;
+
+              package.json|package-lock.json|netlify.toml)
+                CONTROL_PLANE_CHANGE=true
+                ;;
+            esac
+          done < "$CHANGED_FILES"
+
+          echo "control_plane_change=${CONTROL_PLANE_CHANGE}" \
+            >> "$GITHUB_OUTPUT"
+
+          {
+            echo "# Changed Files"
+            echo
+            echo "- Control-plane change: \`${CONTROL_PLANE_CHANGE}\`"
+            echo
+            echo '```text'
+            cat "$CHANGED_FILES"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Validate required project files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          REQUIRED_FILES=(
+            "AGENTS.md"
+            "README.md"
+            "PROJECT_GOAL.md"
+            "package.json"
+            "ops/tasks/task-index.yaml"
+            "ops/state/project-state.json"
+            "ops/scripts/validate-task-graph.ts"
+          )
+
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error::필수 파일이 없습니다: ${file}"
+              exit 1
+            fi
+          done
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -f package-lock.json ]]; then
+            npm ci --no-audit --no-fund
+          else
+            echo "::warning::package-lock.json이 없어 npm install을 사용합니다."
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Validate required package scripts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          REQUIRED_SCRIPTS=(
+            "validate:schemas"
+            "validate:task-graph"
+            "validate:pr-scope"
+          )
+
+          for script in "${REQUIRED_SCRIPTS[@]}"; do
+            if ! jq -e \
+              --arg script "$script" \
+              '.scripts[$script] | type == "string"' \
+              package.json \
+              > /dev/null; then
+              echo "::error::필수 package script가 없습니다: ${script}"
+              exit 1
+            fi
+          done
+
+      - name: Validate JSON schemas
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:schemas
+
+      - name: Validate TASK graph
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:task-graph
+
+      - name: Validate TASK file scope
+        env:
+          TASK_ID: ${{ steps.metadata.outputs.task_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          npm run validate:pr-scope -- \
+            --task-id "$TASK_ID" \
+            --change-list "${RUNNER_TEMP}/changed-files.txt" \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA"
+
+      - name: Run optional project validation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          run_if_present() {
+            local script="$1"
+
+            if jq -e \
+              --arg script "$script" \
+              '.scripts[$script] | type == "string"' \
+              package.json \
+              > /dev/null; then
+              echo "::group::npm run ${script}"
+              npm run "$script"
+              echo "::endgroup::"
+            else
+              echo "::notice::선택 검증이 정의되지 않았습니다: ${script}"
+            fi
+          }
+
+          run_if_present "lint"
+          run_if_present "typecheck"
+          run_if_present "test"
+          run_if_present "build"
+
+      - name: Verify repository integrity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          git diff --check "$BASE_SHA" "$HEAD_SHA"
+
+          if git diff \
+            "$BASE_SHA" \
+            "$HEAD_SHA" \
+            | grep -E \
+              '^\+.*(JULES_API_KEY|NETLIFY_AUTH_TOKEN|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)' \
+              > /dev/null; then
+            echo "::error::변경 내용에서 민감정보로 의심되는 패턴을 발견했습니다."
+            exit 1
+          fi
+
+      - name: Write successful validation summary
+        env:
+          TASK_ID: ${{ steps.metadata.outputs.task_id }}
+          CONTROL_PLANE_CHANGE: ${{ steps.scope.outputs.control_plane_change }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          {
+            echo
+            echo "# Validation Result"
+            echo
+            echo "- TASK: \`${TASK_ID}\`"
+            echo "- Result: \`PASS\`"
+            echo "- Control-plane change: \`${CONTROL_PLANE_CHANGE}\`"
+            echo
+            echo "모든 필수 Juleswhile 검증을 통과했습니다."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  annotate:
+    name: Record PR validation result
+    if: always() && github.event.pull_request.draft == false
+    needs:
+      - validate
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions:
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Ensure validation labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "juleswhile:managed" \
+            --repo "$REPOSITORY" \
+            --color "0052CC" \
+            --description "Managed by Juleswhile workflows" \
+            --force
+
+          gh label create "validation:passed" \
+            --repo "$REPOSITORY" \
+            --color "0E8A16" \
+            --description "Required Juleswhile validation passed" \
+            --force
+
+          gh label create "validation:failed" \
+            --repo "$REPOSITORY" \
+            --color "D73A4A" \
+            --description "Required Juleswhile validation failed" \
+            --force
+
+          gh label create "risk:control-plane" \
+            --repo "$REPOSITORY" \
+            --color "B60205" \
+            --description "Changes Juleswhile control-plane files" \
+            --force
+
+          gh label create "human-approval-required" \
+            --repo "$REPOSITORY" \
+            --color "D93F0B" \
+            --description "A human approval is required before merge" \
+            --force
+
+      - name: Apply validation labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VALIDATION_RESULT: ${{ needs.validate.result }}
+          CONTROL_PLANE_CHANGE: ${{ needs.validate.outputs.control_plane_change }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh pr edit "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --add-label "juleswhile:managed" \
+            || true
+
+          gh pr edit "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --remove-label "validation:passed" \
+            --remove-label "validation:failed" \
+            || true
+
+          if [[ "$VALIDATION_RESULT" == "success" ]]; then
+            gh pr edit "$PR_NUMBER" \
+              --repo "$REPOSITORY" \
+              --add-label "validation:passed" \
+              || true
+          else
+            gh pr edit "$PR_NUMBER" \
+              --repo "$REPOSITORY" \
+              --add-label "validation:failed" \
+              || true
+          fi
+
+          if [[ "$CONTROL_PLANE_CHANGE" == "true" ]]; then
+            gh pr edit "$PR_NUMBER" \
+              --repo "$REPOSITORY" \
+              --add-label "risk:control-plane,human-approval-required" \
+              || true
+          fi
+
+      - name: Comment on validation failure
+        if: needs.validate.result != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body "$(
+              cat <<EOF
+          <!-- juleswhile:pr-validation-failed -->
+
+          ## Juleswhile PR Validation 실패
+
+          Pull Request가 필수 품질 검증을 통과하지 못했습니다.
+
+          - Workflow Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Commit: \`${HEAD_SHA}\`
+
+          실패한 검증을 삭제하거나 약화하지 말고,
+          로그에서 원인을 확인하여 현재 TASK 범위 안에서 보완하십시오.
+
+          Secret, API Key, Token 또는 개인정보를 댓글에 복사하지 마십시오.
+          EOF
+            )" \
+            || true

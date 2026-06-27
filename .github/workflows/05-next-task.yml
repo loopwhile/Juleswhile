@@ -1,0 +1,395 @@
+name: "05 · Next TASK"
+
+on:
+  repository_dispatch:
+    types:
+      - pr_merged
+      - task_completed
+      - reconcile_ready
+
+  workflow_dispatch:
+    inputs:
+      source_task_id:
+        description: "완료되었거나 전이를 발생시킨 TASK ID"
+        required: false
+        type: string
+
+      dry_run:
+        description: "TASK를 예약하거나 Dispatch하지 않고 선택 결과만 확인"
+        required: false
+        default: true
+        type: boolean
+
+      force:
+        description: "AUTOMATION_ENABLED 상태를 무시"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: project-orchestration-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  AUTOMATION_ENABLED: ${{ vars.AUTOMATION_ENABLED || 'false' }}
+  JULES_MAX_CONCURRENCY: ${{ vars.JULES_MAX_CONCURRENCY || '10' }}
+  JULES_DAILY_NEW_TASK_BUDGET: ${{ vars.JULES_DAILY_NEW_TASK_BUDGET || '65' }}
+  JULES_DAILY_CORRECTION_BUDGET: ${{ vars.JULES_DAILY_CORRECTION_BUDGET || '20' }}
+  JULES_DAILY_MAINTENANCE_BUDGET: ${{ vars.JULES_DAILY_MAINTENANCE_BUDGET || '10' }}
+  JULES_DAILY_RESERVE: ${{ vars.JULES_DAILY_RESERVE || '5' }}
+
+jobs:
+  next-task:
+    name: Materialize and select one TASK
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Resolve orchestration input
+        id: input
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SOURCE_TASK_ID: ${{ github.event.client_payload.task_id }}
+          EVENT_DRY_RUN: ${{ github.event.client_payload.dry_run }}
+          MANUAL_SOURCE_TASK_ID: ${{ inputs.source_task_id }}
+          MANUAL_DRY_RUN: ${{ inputs.dry_run }}
+          MANUAL_FORCE: ${{ inputs.force }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            SOURCE_TASK_ID="${MANUAL_SOURCE_TASK_ID:-}"
+            DRY_RUN="${MANUAL_DRY_RUN:-true}"
+            FORCE_RUN="${MANUAL_FORCE:-false}"
+          else
+            SOURCE_TASK_ID="${EVENT_SOURCE_TASK_ID:-}"
+            DRY_RUN="${EVENT_DRY_RUN:-false}"
+            FORCE_RUN=false
+          fi
+
+          SOURCE_TASK_ID="$(
+            printf '%s' "$SOURCE_TASK_ID" \
+              | tr '[:lower:]' '[:upper:]' \
+              | xargs
+          )"
+
+          case "$DRY_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::dry_run은 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          case "$FORCE_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::force는 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          if [[ "$AUTOMATION_ENABLED" != "true" ]] \
+            && [[ "$DRY_RUN" != "true" ]] \
+            && [[ "$FORCE_RUN" != "true" ]]; then
+            echo "::notice::AUTOMATION_ENABLED가 true가 아니므로 다음 TASK를 실행하지 않습니다."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "source_task_id=${SOURCE_TASK_ID}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "force=${FORCE_RUN}" >> "$GITHUB_OUTPUT"
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout main
+        if: steps.input.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        if: steps.input.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Validate orchestration files
+        if: steps.input.outputs.should_run == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          REQUIRED_FILES=(
+            "package.json"
+            "ops/tasks/task-index.yaml"
+            "ops/state/project-state.json"
+            "ops/scripts/materialize-issues.ts"
+            "ops/scripts/select-next-task.ts"
+          )
+
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error::필수 오케스트레이션 파일이 없습니다: ${file}"
+              exit 1
+            fi
+          done
+
+      - name: Install dependencies
+        if: steps.input.outputs.should_run == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -f package-lock.json ]]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Synchronize TASK Issues
+        if: steps.input.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          COMMAND=(
+            npm
+            run
+            materialize:issues
+            --
+            --mode
+            sync
+            --response-file
+            "${RUNNER_TEMP}/materialize-result.json"
+          )
+
+          if [[ "$DRY_RUN" == "true" ]]; then
+            COMMAND+=(--dry-run)
+          fi
+
+          "${COMMAND[@]}"
+
+          jq empty "${RUNNER_TEMP}/materialize-result.json"
+
+      - name: Select and reserve next TASK
+        id: selection
+        if: steps.input.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+          SOURCE_TASK_ID: ${{ steps.input.outputs.source_task_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          RESULT_FILE="${RUNNER_TEMP}/next-task-result.json"
+
+          COMMAND=(
+            npm
+            run
+            select:next-task
+            --
+            --response-file
+            "$RESULT_FILE"
+            --max-concurrency
+            "$JULES_MAX_CONCURRENCY"
+            --new-task-budget
+            "$JULES_DAILY_NEW_TASK_BUDGET"
+            --correction-budget
+            "$JULES_DAILY_CORRECTION_BUDGET"
+            --maintenance-budget
+            "$JULES_DAILY_MAINTENANCE_BUDGET"
+            --reserve-budget
+            "$JULES_DAILY_RESERVE"
+          )
+
+          if [[ -n "$SOURCE_TASK_ID" ]]; then
+            COMMAND+=(
+              --source-task-id
+              "$SOURCE_TASK_ID"
+            )
+          fi
+
+          if [[ "$DRY_RUN" == "true" ]]; then
+            COMMAND+=(--dry-run)
+          else
+            COMMAND+=(--reserve)
+          fi
+
+          "${COMMAND[@]}"
+
+          jq empty "$RESULT_FILE"
+
+          SELECTED="$(
+            jq -r '.selected // false' \
+              "$RESULT_FILE"
+          )"
+
+          TASK_ID="$(
+            jq -r '.taskId // empty' \
+              "$RESULT_FILE"
+          )"
+
+          ISSUE_NUMBER="$(
+            jq -r '.issueNumber // empty' \
+              "$RESULT_FILE"
+          )"
+
+          REASON="$(
+            jq -r '.reason // "No reason supplied"' \
+              "$RESULT_FILE"
+          )"
+
+          READY_COUNT="$(
+            jq -r '.summary.ready // 0' \
+              "$RESULT_FILE"
+          )"
+
+          RUNNING_COUNT="$(
+            jq -r '.summary.running // 0' \
+              "$RESULT_FILE"
+          )"
+
+          BLOCKED_COUNT="$(
+            jq -r '.summary.blocked // 0' \
+              "$RESULT_FILE"
+          )"
+
+          if [[ "$SELECTED" == "true" ]]; then
+            if [[ ! "$TASK_ID" =~ ^TASK-[0-9]{3,}$ ]]; then
+              echo "::error::선택된 TASK ID 형식이 올바르지 않습니다."
+              exit 1
+            fi
+
+            if [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+              echo "::error::선택된 TASK의 Issue 번호가 올바르지 않습니다."
+              exit 1
+            fi
+          fi
+
+          echo "selected=${SELECTED}" >> "$GITHUB_OUTPUT"
+          echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
+          echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+          echo "ready_count=${READY_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "running_count=${RUNNING_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "blocked_count=${BLOCKED_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "result_file=${RESULT_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Mark selected TASK as queued
+        if: >-
+          steps.selection.outputs.selected == 'true' &&
+          steps.input.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TASK_ID: ${{ steps.selection.outputs.task_id }}
+          ISSUE_NUMBER: ${{ steps.selection.outputs.issue_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "state:queued" \
+            --repo "$REPOSITORY" \
+            --color "C2E0C6" \
+            --description "TASK selected and waiting for Jules dispatch" \
+            --force
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --remove-label "state:ready" \
+            --add-label "state:queued"
+
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body "$(
+              cat <<EOF
+          <!-- juleswhile:task-selected -->
+
+          ## 다음 실행 TASK로 선택됨
+
+          \`${TASK_ID}\`가 의존성, 동시성, 사용량 및 Resource Lock 검사를 통과하여
+          다음 Jules 실행 대상으로 예약됐습니다.
+
+          Dispatch Workflow가 Jules Session 생성을 처리합니다.
+          EOF
+            )"
+
+      - name: Dispatch selected TASK
+        if: >-
+          steps.selection.outputs.selected == 'true' &&
+          steps.input.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TASK_ID: ${{ steps.selection.outputs.task_id }}
+          ISSUE_NUMBER: ${{ steps.selection.outputs.issue_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          PAYLOAD_FILE="${RUNNER_TEMP}/task-ready-dispatch.json"
+
+          jq -n \
+            --arg task_id "$TASK_ID" \
+            --argjson issue_number "$ISSUE_NUMBER" \
+            '{
+              event_type: "task_ready",
+              client_payload: {
+                task_id: $task_id,
+                issue_number: $issue_number,
+                dry_run: false,
+                force: false
+              }
+            }' \
+            > "$PAYLOAD_FILE"
+
+          gh api \
+            --method POST \
+            "repos/${REPOSITORY}/dispatches" \
+            --input "$PAYLOAD_FILE"
+
+      - name: Write orchestration summary
+        if: steps.input.outputs.should_run == 'true'
+        env:
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+          SELECTED: ${{ steps.selection.outputs.selected }}
+          TASK_ID: ${{ steps.selection.outputs.task_id }}
+          ISSUE_NUMBER: ${{ steps.selection.outputs.issue_number }}
+          REASON: ${{ steps.selection.outputs.reason }}
+          READY_COUNT: ${{ steps.selection.outputs.ready_count }}
+          RUNNING_COUNT: ${{ steps.selection.outputs.running_count }}
+          BLOCKED_COUNT: ${{ steps.selection.outputs.blocked_count }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          {
+            echo "# Next TASK Result"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| Dry Run | \`${DRY_RUN}\` |"
+            echo "| Selected | \`${SELECTED}\` |"
+            echo "| TASK | \`${TASK_ID:-none}\` |"
+            echo "| Issue | \`${ISSUE_NUMBER:-none}\` |"
+            echo "| Ready | \`${READY_COUNT}\` |"
+            echo "| Running | \`${RUNNING_COUNT}\` |"
+            echo "| Blocked | \`${BLOCKED_COUNT}\` |"
+            echo "| Reason | ${REASON} |"
+          } >> "$GITHUB_STEP_SUMMARY"
