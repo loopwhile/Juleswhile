@@ -1,0 +1,312 @@
+name: Project Goal
+description: 새로운 프로젝트의 목표, 제약사항, 자동화 범위와 성공 조건을 정의합니다.
+title: "[GOAL] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        # Juleswhile Project Goal
+
+        이 Issue는 새로운 프로젝트 또는 주요 프로젝트 단계의 최상위 목표를 정의합니다.
+
+        제출된 목표는 Planner Agent가 분석하여 다음 산출물로 분해합니다.
+
+        - 프로젝트 범위
+        - 비범위
+        - WBS
+        - TASK Manifest
+        - 의존성 그래프
+        - 위험 요소
+        - 검증 계획
+
+        민감정보, API Key, Token, 비밀번호, 개인정보는 입력하지 마십시오.
+
+  - type: input
+    id: project_name
+    attributes:
+      label: 프로젝트 이름
+      description: 프로젝트를 식별할 수 있는 이름을 입력합니다.
+      placeholder: 예) AI-Trendwhile
+    validations:
+      required: true
+
+  - type: dropdown
+    id: project_type
+    attributes:
+      label: 프로젝트 유형
+      description: 가장 가까운 프로젝트 유형을 선택합니다.
+      options:
+        - AI 트렌드 뉴스 팩토리
+        - 경제·금융 리서치 팩토리
+        - 일반 뉴스·콘텐츠 팩토리
+        - 리서치 및 보고서 생성 시스템
+        - 마케팅 운영 시스템
+        - 기업·제품 소개 웹사이트
+        - 콘텐츠 웹사이트
+        - 풀스택 웹서비스
+        - 내부 업무 자동화
+        - 데이터 수집·분석 시스템
+        - 기존 프로젝트 개선
+        - 기타
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: 최상위 목표
+      description: 무엇을 만들고, 어떤 문제를 해결하며, 최종적으로 어떤 상태가 되어야 하는지 작성합니다.
+      placeholder: |
+        예)
+        최신 AI 기술, 연구, 제품, 기업 동향을 수집하고 검증하여
+        지속적으로 게시하는 웹사이트를 구축한다.
+
+        사용자는 주요 AI 동향을 분야별로 확인할 수 있어야 하며,
+        각 콘텐츠는 출처, 발행일, 요약, 영향 분석을 포함해야 한다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 해결하려는 문제
+      description: 현재 어떤 문제가 있고 왜 이 프로젝트가 필요한지 작성합니다.
+      placeholder: |
+        예)
+        AI 관련 정보가 여러 공식 블로그, 연구소, 기업 발표,
+        커뮤니티에 분산되어 있어 중요한 변화를 지속적으로 추적하기 어렵다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: target_users
+    attributes:
+      label: 대상 사용자
+      description: 프로젝트를 사용할 주요 사용자와 사용 상황을 작성합니다.
+      placeholder: |
+        예)
+        - AI 제품과 시장 변화를 확인하려는 개발자
+        - AI 기반 사업 기회를 조사하는 1인 사업자
+        - 주요 AI 연구와 제품 출시를 추적하는 사용자
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_deliverables
+    attributes:
+      label: 기대 산출물
+      description: 최종적으로 생성되어야 하는 문서, 코드, 화면, 자동화, 보고서 등을 작성합니다.
+      placeholder: |
+        예)
+        - 프로젝트 기획서
+        - 정보 수집 정책
+        - 콘텐츠 데이터 스키마
+        - 뉴스 수집기
+        - 중복 제거 로직
+        - 콘텐츠 생성 파이프라인
+        - 반응형 웹사이트
+        - 운영 대시보드
+        - Netlify 배포
+    validations:
+      required: true
+
+  - type: textarea
+    id: core_features
+    attributes:
+      label: 핵심 기능
+      description: 반드시 포함해야 하는 핵심 기능을 작성합니다.
+      placeholder: |
+        예)
+        1. 공식 출처 기반 AI 뉴스 수집
+        2. 중복 콘텐츠 제거
+        3. 카테고리 분류
+        4. 핵심 내용 요약
+        5. 원문 출처 표시
+        6. 웹사이트 게시
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: 제약사항
+      description: 기술, 비용, 일정, 인프라, 계정, 서비스 정책 등의 제약을 작성합니다.
+      placeholder: |
+        예)
+        - GitHub 무료 계정 범위에서 운영
+        - Google AI Pro Jules 사용량 범위 준수
+        - 영구 브랜치는 main 하나만 사용
+        - 결과는 Netlify에서 배포
+        - 별도 유료 데이터베이스 사용 금지
+        - 모든 변경은 Pull Request로 제출
+    validations:
+      required: true
+
+  - type: textarea
+    id: source_policy
+    attributes:
+      label: 데이터 및 정보 출처
+      description: 사용해야 하는 출처, 금지 출처, 최신성 기준, 검증 기준을 작성합니다.
+      placeholder: |
+        예)
+        우선 출처:
+        - 기업 공식 블로그
+        - 공식 제품 문서
+        - 연구기관
+        - 논문 원문
+        - 정부·공공기관
+
+        보조 출처:
+        - 신뢰할 수 있는 기술 매체
+
+        금지:
+        - 출처가 확인되지 않는 재가공 콘텐츠
+        - 원문 확인이 불가능한 요약문
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: team_scope
+    attributes:
+      label: AI 팀 작업 범위
+      description: 이번 프로젝트에서 사용할 역할을 선택합니다.
+      options:
+        - label: 프로젝트 기획
+        - label: 비즈니스 및 요구사항 분석
+        - label: 리서치
+        - label: 시장 및 마케팅 분석
+        - label: 시스템 아키텍처 설계
+        - label: 데이터 및 API 설계
+        - label: UI/UX 설계
+        - label: Stitch MCP 디자인 작업
+        - label: 프론트엔드 개발
+        - label: 백엔드 개발
+        - label: 테스트 및 QA
+        - label: 콘텐츠 생성
+        - label: 배포 및 운영 자동화
+    validations:
+      required: true
+
+  - type: dropdown
+    id: autonomy_mode
+    attributes:
+      label: 자동화 수준
+      description: 프로젝트 TASK의 자동 실행 수준을 선택합니다.
+      options:
+        - Manual - 모든 TASK를 사람이 승인
+        - Guarded - 낮은 위험 TASK 자동 실행, 민감 작업 승인 필요
+        - Limited Autonomous - 승인된 범위에서 연속 실행
+    validations:
+      required: true
+
+  - type: dropdown
+    id: publishing_mode
+    attributes:
+      label: 게시 및 배포 정책
+      description: 콘텐츠와 서비스 결과를 언제 배포할지 선택합니다.
+      options:
+        - 모든 배포를 사람이 승인
+        - CI 통과 시 자동 배포
+        - 일반 콘텐츠만 자동 게시
+        - 초안까지만 자동 생성
+        - 프로젝트 분석 후 결정
+    validations:
+      required: true
+
+  - type: textarea
+    id: quality_gates
+    attributes:
+      label: 필수 품질 검증
+      description: 완료 전에 반드시 통과해야 하는 테스트와 검증을 작성합니다.
+      placeholder: |
+        예)
+        - Markdown lint
+        - TypeScript typecheck
+        - Unit test
+        - Production build
+        - 링크 유효성 검사
+        - 출처 존재 여부 검사
+        - 중복 콘텐츠 검사
+        - 모바일 화면 검증
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: 제외 범위
+      description: 이번 프로젝트에서 명시적으로 하지 않을 작업을 작성합니다.
+      placeholder: |
+        예)
+        - 모바일 네이티브 앱
+        - 유료 회원 기능
+        - 자동 광고 집행
+        - 사용자 개인정보 수집
+        - 투자 추천
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: 예상 위험과 주의사항
+      description: 저작권, 보안, 비용, 데이터 정확성, 외부 서비스 의존성 등의 위험을 작성합니다.
+      placeholder: |
+        예)
+        - 원문 저작권 침해 방지
+        - AI 요약 오류 가능성
+        - Jules 사용량 초과 방지
+        - 외부 사이트 구조 변경
+        - 출처 없는 정보 게시 방지
+    validations:
+      required: false
+
+  - type: input
+    id: target_date
+    attributes:
+      label: 목표 일정
+      description: 목표 완료일 또는 운영 시작일이 있다면 절대 날짜로 입력합니다.
+      placeholder: 예) 2026-08-23
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: 프로젝트 성공 조건
+      description: 프로젝트가 완료됐다고 판단할 수 있는 검증 가능한 조건을 작성합니다.
+      placeholder: |
+        예)
+        - Goal Issue에서 WBS와 TASK가 생성된다.
+        - 최소 3개 공식 출처에서 콘텐츠를 수집한다.
+        - 중복 콘텐츠를 식별한다.
+        - 생성된 페이지가 Netlify에 배포된다.
+        - 모바일과 데스크톱 화면에서 정상 동작한다.
+        - 모든 필수 CI 검증을 통과한다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: 추가 정보
+      description: 참고할 기존 저장소, 문서, 디자인 규칙, 기술 스택 또는 기타 정보를 작성합니다.
+      placeholder: |
+        예)
+        - React + TypeScript 사용
+        - 기존 디자인 문서 참고
+        - 특정 폴더는 수정 금지
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: safety_acknowledgement
+    attributes:
+      label: 안전 및 권한 확인
+      options:
+        - label: 이 Issue에 API Key, Token, 비밀번호 또는 개인정보를 입력하지 않았습니다.
+          required: true
+        - label: AI가 결제, 인증, 데이터 삭제, Secrets, 유료 자원과 관련된 작업을 임의로 수행하면 안 된다는 것을 확인했습니다.
+          required: true
+        - label: AI 생성 결과는 CI와 필요한 사람 검토를 거쳐야 한다는 것을 확인했습니다.
+          required: true
