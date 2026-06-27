@@ -207,6 +207,7 @@ jobs:
       - name: Dispatch TASK
         id: dispatch
         env:
+          GH_TOKEN: ${{ github.token }}
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           TASK_ID: ${{ steps.input.outputs.task_id }}
           ISSUE_NUMBER: ${{ steps.input.outputs.issue_number }}
