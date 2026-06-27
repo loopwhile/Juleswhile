@@ -163,7 +163,7 @@ jobs:
             --json \
               number,title,body,state,isDraft,isCrossRepository,\
           baseRefName,headRefName,headRefOid,mergeable,mergeStateStatus,\
-          reviewDecision,labels,statusCheckRollup,url \
+          reviewDecision,labels,url \
             > "${RUNNER_TEMP}/pr-state.json"
 
       - name: Evaluate merge policy
@@ -518,7 +518,7 @@ jobs:
 
       - name: Record merge failure
         if: >-
-          failure() &&
+          steps.merge.outcome == 'failure' &&
           steps.resolve.outputs.should_continue == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
