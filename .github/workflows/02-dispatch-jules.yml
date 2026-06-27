@@ -385,9 +385,12 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          gh issue edit "$TRACKING_ISSUE" \
-            --repo "$REPOSITORY" \
-            --add-label "juleswhile:task,state:dry-run"
+          jq -n             '{
+              labels: [
+                "juleswhile:task",
+                "state:dry-run"
+              ]
+            }'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${TRACKING_ISSUE}/labels"                 --input -                 > /dev/null
 
           gh issue comment "$TRACKING_ISSUE" \
             --repo "$REPOSITORY" \
@@ -427,13 +430,17 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          gh issue edit "$TRACKING_ISSUE" \
-            --repo "$REPOSITORY" \
-            --remove-label "state:ready" \
-            --remove-label "state:queued" \
-            --remove-label "state:dispatching" \
-            --add-label "juleswhile:task,state:running" \
-            || true
+          for label in             "state:ready"             "state:queued"             "state:dispatching"
+          do
+            gh api               --method DELETE               "repos/${REPOSITORY}/issues/${TRACKING_ISSUE}/labels/${label}"               > /dev/null 2>&1               || true
+          done
+
+          jq -n             '{
+              labels: [
+                "juleswhile:task",
+                "state:running"
+              ]
+            }'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${TRACKING_ISSUE}/labels"                 --input -                 > /dev/null
 
           COMMENT_FILE="${RUNNER_TEMP}/task-dispatch-comment.md"
 
@@ -517,11 +524,9 @@ jobs:
             --description "Automation or Jules session failed" \
             --force
 
-          gh issue edit "$TRACKING_ISSUE" \
-            --repo "$REPOSITORY" \
-            --remove-label "state:dispatching" \
-            --add-label "state:failed" \
-            || true
+          gh api             --method DELETE             "repos/${REPOSITORY}/issues/${TRACKING_ISSUE}/labels/state:dispatching"             > /dev/null 2>&1             || true
+
+          jq -n             '{labels:["state:failed"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${TRACKING_ISSUE}/labels"                 --input -                 > /dev/null             || true
 
           gh issue comment "$TRACKING_ISSUE" \
             --repo "$REPOSITORY" \

@@ -122,7 +122,7 @@
     "pausedReason": "Bootstrap is incomplete. Keep automation disabled until schemas, scripts, workflows, and dry-run validation are complete."
   },
   "taskSummary": {
-    "total": 1,
+    "total": 2,
     "draft": 0,
     "ready": 1,
     "queued": 0,
@@ -131,7 +131,7 @@
     "prOpened": 0,
     "validating": 0,
     "correcting": 0,
-    "mergeReady": 0,
+    "mergeReady": 1,
     "merged": 0,
     "deploying": 0,
     "completed": 0,
@@ -165,5 +165,5 @@
   },
   "lastEvent": null,
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-06-27T00:00:00+09:00"
+  "updatedAt": "2026-06-27T09:57:28Z"
 }

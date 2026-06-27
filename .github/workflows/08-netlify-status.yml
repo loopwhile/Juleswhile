@@ -477,12 +477,12 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          gh issue edit "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --remove-label "deployment:failed" \
-            --remove-label "state:deployment-review" \
-            --add-label "deployment:ready" \
-            || true
+          for label in             "deployment:failed"             "state:deployment-review"
+          do
+            gh api               --method DELETE               "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels/${label}"               > /dev/null 2>&1               || true
+          done
+
+          jq -n             '{labels:["deployment:ready"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
 
           gh issue comment "$ISSUE_NUMBER" \
             --repo "$REPOSITORY" \
@@ -529,15 +529,19 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          gh issue reopen "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            || true
+          jq -n             '{
+              state: "open",
+              state_reason: "reopened"
+            }'             | gh api                 --method PATCH                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}"                 --input -                 > /dev/null             || true
 
-          gh issue edit "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --remove-label "deployment:ready" \
-            --add-label "deployment:failed,state:deployment-review" \
-            || true
+          gh api             --method DELETE             "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels/deployment:ready"             > /dev/null 2>&1             || true
+
+          jq -n             '{
+              labels: [
+                "deployment:failed",
+                "state:deployment-review"
+              ]
+            }'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels"                 --input -                 > /dev/null             || true
 
           gh issue comment "$ISSUE_NUMBER" \
             --repo "$REPOSITORY" \

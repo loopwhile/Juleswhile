@@ -182,9 +182,7 @@ jobs:
             --description "Automation or Jules session failed" \
             --force
 
-          gh issue edit "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --add-label "juleswhile:goal,state:dispatching"
+          jq -n             '{labels:["juleswhile:goal","state:dispatching"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
 
       - name: Build Planner session request
         if: steps.gate.outputs.should_run == 'true'
@@ -263,6 +261,11 @@ jobs:
             to the repository state contract.
           - Run every available schema and task-graph validation.
           - Create a Pull Request using the repository PR template.
+          - The Pull Request description must begin with this exact marker:
+            <!-- juleswhile:task-pr -->
+          - The Pull Request description must include this exact Goal reference:
+            Goal Issue: #${issue.number}
+          - Do not remove, escape, wrap, or rewrite the marker.
 
           Pull Request title:
           [GOAL-${issue.number}] Initialize project plan and TASK graph
@@ -393,10 +396,9 @@ jobs:
             --repo "$REPOSITORY" \
             --body-file "$COMMENT_FILE"
 
-          gh issue edit "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --remove-label "state:dispatching" \
-            --add-label "state:running"
+          gh api             --method DELETE             "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels/state:dispatching"             > /dev/null 2>&1             || true
+
+          jq -n             '{labels:["state:running"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
 
       - name: Record Goal Intake failure
         if: failure() && steps.gate.outputs.should_run == 'true'
@@ -413,11 +415,9 @@ jobs:
             --description "Automation or Jules session failed" \
             --force
 
-          gh issue edit "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --remove-label "state:dispatching" \
-            --add-label "state:failed" \
-            || true
+          gh api             --method DELETE             "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels/state:dispatching"             > /dev/null 2>&1             || true
+
+          jq -n             '{labels:["state:failed"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels"                 --input -                 > /dev/null             || true
 
           gh issue comment "$ISSUE_NUMBER" \
             --repo "$REPOSITORY" \

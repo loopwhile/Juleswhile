@@ -240,12 +240,17 @@ jobs:
             }
           }
 
+          const ownerApproved = labels.has(
+            "approval:owner-approved",
+          );
+
           if (
             labels.has("human-approval-required") &&
-            state.reviewDecision !== "APPROVED"
+            state.reviewDecision !== "APPROVED" &&
+            !ownerApproved
           ) {
             blockers.push(
-              "A human approval is required but reviewDecision is not APPROVED",
+              "A human approval or explicit owner approval is required",
             );
           }
 
@@ -275,6 +280,23 @@ jobs:
             ? taskIssueMatch[1]
             : "";
 
+          const goalIssueMatch = String(state.body || "").match(
+            /Goal Issue:\s*(?:https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/)?#?([0-9]+)/i,
+          );
+
+          const goalIssueNumber = goalIssueMatch
+            ? goalIssueMatch[1]
+            : "";
+
+          if (
+            taskId.startsWith("GOAL-") &&
+            !goalIssueNumber
+          ) {
+            blockers.push(
+              "Goal PR does not contain a Goal Issue reference",
+            );
+          }
+
           const shouldMerge = blockers.length === 0;
 
           fs.appendFileSync(
@@ -283,6 +305,7 @@ jobs:
               `should_merge=${shouldMerge}`,
               `task_id=${taskId}`,
               `task_issue_number=${taskIssueNumber}`,
+              `goal_issue_number=${goalIssueNumber}`,
               `head_sha=${state.headRefOid || ""}`,
               "",
             ].join("\n"),
@@ -298,6 +321,7 @@ jobs:
               `| PR | #${state.number} |`,
               `| TASK | \`${taskId || "unknown"}\` |`,
               `| Review | \`${state.reviewDecision || "none"}\` |`,
+              `| Owner approval | \`${ownerApproved}\` |`,
               `| Mergeable | \`${state.mergeable || "unknown"}\` |`,
               `| Merge state | \`${state.mergeStateStatus || "unknown"}\` |`,
               `| Merge allowed | \`${shouldMerge}\` |`,
@@ -330,10 +354,7 @@ jobs:
             --description "Automatic merge policy blocked this PR" \
             --force
 
-          gh pr edit "$RESOLVED_PR_NUMBER" \
-            --repo "$REPOSITORY" \
-            --add-label "state:merge-blocked" \
-            || true
+          jq -n             '{labels:["state:merge-blocked"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${RESOLVED_PR_NUMBER}/labels"                 --input -                 > /dev/null
 
           echo "::notice::자동 병합 정책이 Pull Request를 차단했습니다."
 
@@ -450,12 +471,12 @@ jobs:
             --description "TASK completed and merged into main" \
             --force
 
-          gh issue edit "$TASK_ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --remove-label "state:running" \
-            --remove-label "state:validating" \
-            --add-label "state:completed" \
-            || true
+          for label in             "state:running"             "state:validating"
+          do
+            gh api               --method DELETE               "repos/${REPOSITORY}/issues/${TASK_ISSUE_NUMBER}/labels/${label}"               > /dev/null 2>&1               || true
+          done
+
+          jq -n             '{labels:["state:completed"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${TASK_ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
 
           gh issue comment "$TASK_ISSUE_NUMBER" \
             --repo "$REPOSITORY" \
@@ -475,9 +496,54 @@ jobs:
           EOF
             )"
 
-          gh issue close "$TASK_ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --reason completed
+          jq -n             '{
+              state: "closed",
+              state_reason: "completed"
+            }'             | gh api                 --method PATCH                 "repos/${REPOSITORY}/issues/${TASK_ISSUE_NUMBER}"                 --input -                 > /dev/null
+
+      - name: Complete linked Goal Issue
+        if: >-
+          steps.merge.outcome == 'success' &&
+          startsWith(steps.policy.outputs.task_id, 'GOAL-') &&
+          steps.policy.outputs.goal_issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          GOAL_ISSUE_NUMBER: ${{ steps.policy.outputs.goal_issue_number }}
+          GOAL_ID: ${{ steps.policy.outputs.task_id }}
+          RESOLVED_PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "state:completed"             --repo "$REPOSITORY"             --color "0E8A16"             --description "Goal or TASK completed successfully"             --force
+
+          for label in             "state:dispatching"             "state:running"             "state:failed"
+          do
+            gh api               --method DELETE               "repos/${REPOSITORY}/issues/${GOAL_ISSUE_NUMBER}/labels/${label}"               > /dev/null 2>&1               || true
+          done
+
+          jq -n             '{labels:["state:completed"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${GOAL_ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
+
+          gh issue comment "$GOAL_ISSUE_NUMBER"             --repo "$REPOSITORY"             --body "$(
+              cat <<EOF
+          <!-- juleswhile:goal-completed -->
+
+          ## Goal 완료
+
+          \`${GOAL_ID}\`의 Planner Pull Request가 \`main\`에 병합됐습니다.
+
+          - Pull Request: #${RESOLVED_PR_NUMBER}
+          - Merge Commit: \`${MERGE_SHA}\`
+          - 상태: \`completed\`
+          EOF
+            )"
+
+          jq -n             '{
+              state: "closed",
+              state_reason: "completed"
+            }'             | gh api                 --method PATCH                 "repos/${REPOSITORY}/issues/${GOAL_ISSUE_NUMBER}"                 --input -                 > /dev/null
 
       - name: Dispatch next-task event
         if: steps.merge.outcome == 'success'
@@ -534,10 +600,7 @@ jobs:
             --description "Automatic merge attempt failed" \
             --force
 
-          gh pr edit "$RESOLVED_PR_NUMBER" \
-            --repo "$REPOSITORY" \
-            --add-label "state:merge-failed" \
-            || true
+          jq -n             '{labels:["state:merge-failed"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${RESOLVED_PR_NUMBER}/labels"                 --input -                 > /dev/null             || true
 
           gh pr comment "$RESOLVED_PR_NUMBER" \
             --repo "$REPOSITORY" \

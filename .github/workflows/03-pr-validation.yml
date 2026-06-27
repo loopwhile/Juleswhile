@@ -426,34 +426,28 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          gh pr edit "$PR_NUMBER" \
-            --repo "$REPOSITORY" \
-            --add-label "juleswhile:managed" \
-            || true
+          jq -n             '{labels:["juleswhile:managed"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels"                 --input -                 > /dev/null
 
-          gh pr edit "$PR_NUMBER" \
-            --repo "$REPOSITORY" \
-            --remove-label "validation:passed" \
-            --remove-label "validation:failed" \
-            || true
+          for label in             "validation:passed"             "validation:failed"
+          do
+            gh api               --method DELETE               "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${label}"               > /dev/null 2>&1               || true
+          done
 
           if [[ "$VALIDATION_RESULT" == "success" ]]; then
-            gh pr edit "$PR_NUMBER" \
-              --repo "$REPOSITORY" \
-              --add-label "validation:passed" \
-              || true
+            RESULT_LABEL="validation:passed"
           else
-            gh pr edit "$PR_NUMBER" \
-              --repo "$REPOSITORY" \
-              --add-label "validation:failed" \
-              || true
+            RESULT_LABEL="validation:failed"
           fi
 
+          jq -n             --arg label "$RESULT_LABEL"             '{labels:[$label]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels"                 --input -                 > /dev/null
+
           if [[ "$CONTROL_PLANE_CHANGE" == "true" ]]; then
-            gh pr edit "$PR_NUMBER" \
-              --repo "$REPOSITORY" \
-              --add-label "risk:control-plane,human-approval-required" \
-              || true
+            jq -n               '{
+                labels: [
+                  "risk:control-plane",
+                  "human-approval-required"
+                ]
+              }'               | gh api                   --method POST                   "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels"                   --input -                   > /dev/null
           fi
 
       - name: Comment on validation failure
