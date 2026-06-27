@@ -27,7 +27,7 @@ on:
         type: boolean
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 concurrency:
@@ -290,44 +290,6 @@ jobs:
           echo "running_count=${RUNNING_COUNT}" >> "$GITHUB_OUTPUT"
           echo "blocked_count=${BLOCKED_COUNT}" >> "$GITHUB_OUTPUT"
           echo "result_file=${RESULT_FILE}" >> "$GITHUB_OUTPUT"
-
-      - name: Mark selected TASK as queued
-        if: >-
-          steps.selection.outputs.selected == 'true' &&
-          steps.input.outputs.dry_run != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          TASK_ID: ${{ steps.selection.outputs.task_id }}
-          ISSUE_NUMBER: ${{ steps.selection.outputs.issue_number }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          gh label create "state:queued" \
-            --repo "$REPOSITORY" \
-            --color "C2E0C6" \
-            --description "TASK selected and waiting for Jules dispatch" \
-            --force
-
-          gh api             --method DELETE             "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels/state:ready"             > /dev/null 2>&1             || true
-
-          jq -n             '{labels:["state:queued"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
-
-          gh issue comment "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --body "$(
-              cat <<EOF
-          <!-- juleswhile:task-selected -->
-
-          ## 다음 실행 TASK로 선택됨
-
-          \`${TASK_ID}\`가 의존성, 동시성, 사용량 및 Resource Lock 검사를 통과하여
-          다음 Jules 실행 대상으로 예약됐습니다.
-
-          Dispatch Workflow가 Jules Session 생성을 처리합니다.
-          EOF
-            )"
 
       - name: Dispatch selected TASK
         if: >-
