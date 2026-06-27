@@ -131,10 +131,10 @@
     "prOpened": 0,
     "validating": 0,
     "correcting": 0,
-    "mergeReady": 1,
+    "mergeReady": 0,
     "merged": 0,
     "deploying": 0,
-    "completed": 0,
+    "completed": 1,
     "failed": 0,
     "timeout": 0,
     "retryWait": 0,
@@ -165,5 +165,5 @@
   },
   "lastEvent": null,
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-06-27T09:57:28Z"
+  "updatedAt": "2026-06-27T11:43:29Z"
 }
