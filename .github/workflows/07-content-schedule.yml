@@ -357,9 +357,12 @@ jobs:
             --description "TASK selected and waiting for Jules dispatch" \
             --force
 
-          gh issue edit "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --add-label "task:scheduled-content,state:queued"
+          jq -n             '{
+              labels: [
+                "task:scheduled-content",
+                "state:queued"
+              ]
+            }'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
 
       - name: Dispatch scheduled content TASK
         if: >-
