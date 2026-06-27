@@ -286,19 +286,23 @@ jobs:
               --arg branch "$NETLIFY_PRODUCTION_BRANCH" \
               '
                 map(
-                  select(
-                    (
-                      (.commit_ref // "") == $sha or
-                      (.commit_ref // "") == $short_sha or
-                      (.commit_ref // "") | startswith($sha) or
-                      $sha | startswith(.commit_ref // "__no_match__")
+                  (.commit_ref // "" | tostring) as $commit_ref
+                  | ((.branch // $branch) | tostring) as $deploy_branch
+                  | ((.context // "") | tostring) as $deploy_context
+                  | select(
+                      (
+                        $commit_ref == $sha or
+                        (
+                          ($commit_ref | length) >= 7 and
+                          $commit_ref[0:7] == $short_sha
+                        )
+                      )
+                      and
+                      (
+                        $deploy_branch == $branch or
+                        $deploy_context == "production"
+                      )
                     )
-                    and
-                    (
-                      (.branch // $branch) == $branch or
-                      (.context // "") == "production"
-                    )
-                  )
                 )
                 | sort_by(.created_at // "")
                 | reverse
