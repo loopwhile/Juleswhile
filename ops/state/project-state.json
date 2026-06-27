@@ -8,7 +8,7 @@
   "repository": {
     "fullName": "loopwhile/Juleswhile",
     "htmlUrl": "https://github.com/loopwhile/Juleswhile",
-    "julesSourceName": "sources/github-loopwhile-Juleswhile"
+    "julesSourceName": null
   },
   "projectGoal": {
     "schemaVersion": 1,
@@ -16,8 +16,8 @@
     "name": "Juleswhile Planner Smoke Test",
     "type": "internal-automation",
     "status": "active",
-    "objective": "Juleswhile \uc624\ucf00\uc2a4\ud2b8\ub808\uc774\uc158\uc758 \ucd5c\ucd08 \ud1b5\ud569 Smoke Test\ub97c \uc218\ud589\ud55c\ub2e4.",
-    "problem": "\uc2dc\uc2a4\ud15c\uc774 \uc815\uc0c1\uc801\uc73c\ub85c Goal Intake\ubd80\ud130 PR \uc0dd\uc131, \uac80\uc99d\uae4c\uc9c0 \uc774\uc5b4\uc9c0\ub294\uc9c0 \ud655\uc778\ud574\uc57c \ud55c\ub2e4.",
+    "objective": "Juleswhile 오케스트레이션의 최초 통합 Smoke Test를 수행한다.",
+    "problem": "시스템이 정상적으로 Goal Intake부터 PR 생성, 검증까지 이어지는지 확인해야 한다.",
     "targetUsers": [
       "Juleswhile System Administrators"
     ],
@@ -82,25 +82,25 @@
     "acceptanceCriteria": [
       {
         "id": "AC-001",
-        "statement": "Planner Session\uc774 \uc815\uc0c1 \uc0dd\uc131\ub41c\ub2e4.",
+        "statement": "Planner Session이 정상 생성된다.",
         "verificationMethod": "GitHub Actions logs",
         "required": true
       },
       {
         "id": "AC-002",
-        "statement": "Jules\uac00 \uc800\uc7a5\uc18c\ub97c \uc77d\ub294\ub2e4.",
+        "statement": "Jules가 저장소를 읽는다.",
         "verificationMethod": "Jules Session logs",
         "required": true
       },
       {
         "id": "AC-003",
-        "statement": "Pull Request\uac00 \uc0dd\uc131\ub41c\ub2e4.",
+        "statement": "Pull Request가 생성된다.",
         "verificationMethod": "GitHub Pull Requests",
         "required": true
       },
       {
         "id": "AC-004",
-        "statement": "PR Validation Workflow\uac00 \uc2e4\ud589\ub41c\ub2e4.",
+        "statement": "PR Validation Workflow가 실행된다.",
         "verificationMethod": "GitHub Actions",
         "required": true
       }
@@ -117,7 +117,7 @@
   "automation": {
     "enabled": false,
     "contentEnabled": false,
-    "netlifyStatusEnabled": false,
+    "netlifyStatusEnabled": true,
     "mode": "guarded",
     "pausedReason": "Bootstrap is incomplete. Keep automation disabled until schemas, scripts, workflows, and dry-run validation are complete."
   },
