@@ -9,6 +9,9 @@ import { parse as parseYaml } from "yaml";
 
 const DEFAULT_TASK_INDEX = "ops/tasks/task-index.yaml";
 
+const DEFAULT_PROJECT_STATE =
+	"ops/state/project-state.json";
+
 const TASK_ID_PATTERN = /^TASK-[0-9]{3,}$/;
 
 const GOAL_ID_PATTERN = /^GOAL-[0-9]+$/;
@@ -64,6 +67,15 @@ interface ValidationReport {
 	errors: string[];
 	warnings: string[];
 	summary: Record<string, number | string>;
+}
+
+interface ProjectState {
+	taskSummary: {
+		total: number;
+		ready: number;
+		blocked: number;
+		templates: number;
+	};
 }
 
 function fail(message: string): never {
@@ -174,6 +186,26 @@ async function readTaskIndex(filePath: string): Promise<TaskIndex> {
 
 	if (!Array.isArray(parsed.tasks)) {
 		fail(`${filePath}에 tasks 배열이 없습니다.`);
+	}
+
+	return parsed;
+}
+
+async function readProjectState(): Promise<ProjectState> {
+	const content = await fs.readFile(
+		DEFAULT_PROJECT_STATE,
+		"utf8",
+	);
+
+	const parsed = JSON.parse(content) as ProjectState;
+
+	if (
+		!parsed.taskSummary ||
+		typeof parsed.taskSummary !== "object"
+	) {
+		fail(
+			`${DEFAULT_PROJECT_STATE}에 taskSummary가 없습니다.`,
+		);
 	}
 
 	return parsed;
@@ -438,19 +470,57 @@ async function validateGraph(taskIndex: TaskIndex): Promise<ValidationReport> {
 		}
 	}
 
+	const summary = {
+		total: taskIndex.tasks.length,
+		tasks: taskIndex.tasks.filter(
+			(task) => task.kind === "task",
+		).length,
+		templates: taskIndex.tasks.filter(
+			(task) => task.kind === "template",
+		).length,
+		ready: taskIndex.tasks.filter(
+			(task) =>
+				task.kind === "task" &&
+				task.status === "READY",
+		).length,
+		blocked: taskIndex.tasks.filter(
+			(task) =>
+				task.kind === "task" &&
+				task.status === "BLOCKED",
+		).length,
+	};
+
+	const projectState = await readProjectState();
+
+	const expectedStateSummary = {
+		total: summary.tasks,
+		ready: summary.ready,
+		blocked: summary.blocked,
+		templates: summary.templates,
+	};
+
+	for (const [
+		field,
+		expected,
+	] of Object.entries(expectedStateSummary)) {
+		const actual =
+			projectState.taskSummary[
+				field as keyof ProjectState["taskSummary"]
+			];
+
+		if (actual !== expected) {
+			errors.push(
+				`project-state taskSummary.${field} 불일치: ` +
+					`expected=${expected}, actual=${actual}`,
+			);
+		}
+	}
+
 	return {
 		mode: "graph",
 		errors,
 		warnings,
-		summary: {
-			total: taskIndex.tasks.length,
-			tasks: taskIndex.tasks.filter((task) => task.kind === "task").length,
-			templates: taskIndex.tasks.filter((task) => task.kind === "template")
-				.length,
-			ready: taskIndex.tasks.filter((task) => task.status === "READY").length,
-			blocked: taskIndex.tasks.filter((task) => task.status === "BLOCKED")
-				.length,
-		},
+		summary,
 	};
 }
 

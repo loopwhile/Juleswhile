@@ -263,6 +263,11 @@ jobs:
             to the repository state contract.
           - Run every available schema and task-graph validation.
           - Create a Pull Request using the repository PR template.
+          - The Pull Request description must begin with this exact marker:
+            <!-- juleswhile:task-pr -->
+          - The Pull Request description must include this exact Goal reference:
+            Goal Issue: #${issue.number}
+          - Do not remove, escape, wrap, or rewrite the marker.
 
           Pull Request title:
           [GOAL-${issue.number}] Initialize project plan and TASK graph
