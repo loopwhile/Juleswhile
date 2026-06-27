@@ -1,0 +1,564 @@
+name: "08 · Netlify Status"
+
+on:
+  repository_dispatch:
+    types:
+      - pr_merged
+
+  workflow_dispatch:
+    inputs:
+      merge_sha:
+        description: "확인할 main 병합 Commit SHA"
+        required: true
+        type: string
+
+      task_id:
+        description: "관련 TASK ID"
+        required: false
+        type: string
+
+      issue_number:
+        description: "관련 TASK Issue 번호"
+        required: false
+        type: string
+
+      dry_run:
+        description: "Netlify API 호출 없이 설정만 검증"
+        required: false
+        default: true
+        type: boolean
+
+      force:
+        description: "NETLIFY_STATUS_ENABLED 상태를 무시"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: >-
+    netlify-status-${{
+      github.event.client_payload.merge_sha ||
+      inputs.merge_sha ||
+      github.run_id
+    }}
+  cancel-in-progress: false
+
+env:
+  NETLIFY_API_BASE_URL: "https://api.netlify.com/api/v1"
+  NETLIFY_STATUS_ENABLED: ${{ vars.NETLIFY_STATUS_ENABLED || 'false' }}
+  NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+  NETLIFY_PRODUCTION_BRANCH: ${{ vars.NETLIFY_PRODUCTION_BRANCH || 'main' }}
+  NETLIFY_POLL_ATTEMPTS: ${{ vars.NETLIFY_POLL_ATTEMPTS || '20' }}
+  NETLIFY_POLL_INTERVAL_SECONDS: ${{ vars.NETLIFY_POLL_INTERVAL_SECONDS || '15' }}
+
+jobs:
+  status:
+    name: Verify Netlify production deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Resolve deployment input
+        id: input
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_MERGE_SHA: ${{ github.event.client_payload.merge_sha }}
+          EVENT_TASK_ID: ${{ github.event.client_payload.task_id }}
+          EVENT_ISSUE_NUMBER: ${{ github.event.client_payload.task_issue_number }}
+          MANUAL_MERGE_SHA: ${{ inputs.merge_sha }}
+          MANUAL_TASK_ID: ${{ inputs.task_id }}
+          MANUAL_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          MANUAL_DRY_RUN: ${{ inputs.dry_run }}
+          MANUAL_FORCE: ${{ inputs.force }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
+            MERGE_SHA="${EVENT_MERGE_SHA:-}"
+            TASK_ID="${EVENT_TASK_ID:-}"
+            ISSUE_NUMBER="${EVENT_ISSUE_NUMBER:-}"
+            DRY_RUN=false
+            FORCE_RUN=false
+          else
+            MERGE_SHA="${MANUAL_MERGE_SHA:-}"
+            TASK_ID="${MANUAL_TASK_ID:-}"
+            ISSUE_NUMBER="${MANUAL_ISSUE_NUMBER:-}"
+            DRY_RUN="${MANUAL_DRY_RUN:-true}"
+            FORCE_RUN="${MANUAL_FORCE:-false}"
+          fi
+
+          MERGE_SHA="$(
+            printf '%s' "$MERGE_SHA" \
+              | tr '[:upper:]' '[:lower:]' \
+              | xargs
+          )"
+
+          TASK_ID="$(
+            printf '%s' "$TASK_ID" \
+              | tr '[:lower:]' '[:upper:]' \
+              | xargs
+          )"
+
+          if [[ ! "$MERGE_SHA" =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "::error::유효한 Git Commit SHA가 필요합니다."
+            exit 1
+          fi
+
+          if [[ -n "$TASK_ID" ]] \
+            && [[ ! "$TASK_ID" =~ ^(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)$ ]]; then
+            echo "::error::TASK ID 형식이 올바르지 않습니다: ${TASK_ID}"
+            exit 1
+          fi
+
+          if [[ -n "$ISSUE_NUMBER" ]] \
+            && [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::Issue 번호는 숫자여야 합니다."
+            exit 1
+          fi
+
+          case "$DRY_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::dry_run은 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          case "$FORCE_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::force는 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          if [[ "$NETLIFY_STATUS_ENABLED" != "true" ]] \
+            && [[ "$DRY_RUN" != "true" ]] \
+            && [[ "$FORCE_RUN" != "true" ]]; then
+            echo "::notice::NETLIFY_STATUS_ENABLED가 true가 아니므로 배포 확인을 건너뜁니다."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$NETLIFY_POLL_ATTEMPTS" =~ ^[0-9]+$ ]] \
+            || (( NETLIFY_POLL_ATTEMPTS < 1 )) \
+            || (( NETLIFY_POLL_ATTEMPTS > 60 )); then
+            echo "::error::NETLIFY_POLL_ATTEMPTS는 1~60 사이의 정수여야 합니다."
+            exit 1
+          fi
+
+          if [[ ! "$NETLIFY_POLL_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] \
+            || (( NETLIFY_POLL_INTERVAL_SECONDS < 5 )) \
+            || (( NETLIFY_POLL_INTERVAL_SECONDS > 60 )); then
+            echo "::error::NETLIFY_POLL_INTERVAL_SECONDS는 5~60 사이의 정수여야 합니다."
+            exit 1
+          fi
+
+          echo "merge_sha=${MERGE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${MERGE_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
+          echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "force=${FORCE_RUN}" >> "$GITHUB_OUTPUT"
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Netlify configuration
+        if: steps.input.outputs.should_run == 'true'
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -z "${NETLIFY_SITE_ID:-}" ]]; then
+            echo "::error::NETLIFY_SITE_ID Secret이 설정되지 않았습니다."
+            exit 1
+          fi
+
+          if [[ "$DRY_RUN" != "true" ]] \
+            && [[ -z "${NETLIFY_AUTH_TOKEN:-}" ]]; then
+            echo "::error::NETLIFY_AUTH_TOKEN Secret이 설정되지 않았습니다."
+            exit 1
+          fi
+
+          if [[ "$NETLIFY_PRODUCTION_BRANCH" != "main" ]]; then
+            echo "::warning::Netlify Production Branch가 main으로 설정되지 않았습니다: ${NETLIFY_PRODUCTION_BRANCH}"
+          fi
+
+      - name: Dry-run configuration result
+        if: >-
+          steps.input.outputs.should_run == 'true' &&
+          steps.input.outputs.dry_run == 'true'
+        env:
+          MERGE_SHA: ${{ steps.input.outputs.merge_sha }}
+          TASK_ID: ${{ steps.input.outputs.task_id }}
+          ISSUE_NUMBER: ${{ steps.input.outputs.issue_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          {
+            echo "# Netlify Status Dry Run"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| Site configured | \`true\` |"
+            echo "| Production branch | \`${NETLIFY_PRODUCTION_BRANCH}\` |"
+            echo "| Merge SHA | \`${MERGE_SHA}\` |"
+            echo "| TASK | \`${TASK_ID:-none}\` |"
+            echo "| Issue | \`${ISSUE_NUMBER:-none}\` |"
+            echo "| Poll attempts | \`${NETLIFY_POLL_ATTEMPTS}\` |"
+            echo "| Poll interval | \`${NETLIFY_POLL_INTERVAL_SECONDS}s\` |"
+            echo
+            echo "Netlify API는 호출하지 않았습니다."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Poll Netlify deployment
+        id: deploy
+        if: >-
+          steps.input.outputs.should_run == 'true' &&
+          steps.input.outputs.dry_run != 'true'
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          MERGE_SHA: ${{ steps.input.outputs.merge_sha }}
+          SHORT_SHA: ${{ steps.input.outputs.short_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          DEPLOYS_FILE="${RUNNER_TEMP}/netlify-deploys.json"
+          MATCH_FILE="${RUNNER_TEMP}/netlify-deploy.json"
+
+          FOUND=false
+          FINAL_STATE=""
+          DEPLOY_ID=""
+          DEPLOY_URL=""
+          ADMIN_URL=""
+          ERROR_MESSAGE=""
+          CONTEXT=""
+          BRANCH=""
+          COMMIT_REF=""
+
+          for ((attempt = 1; attempt <= NETLIFY_POLL_ATTEMPTS; attempt++)); do
+            echo "Netlify 배포 확인: ${attempt}/${NETLIFY_POLL_ATTEMPTS}"
+
+            HTTP_STATUS="$(
+              curl \
+                --silent \
+                --show-error \
+                --location \
+                --header "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" \
+                --header "User-Agent: Juleswhile/${GITHUB_REPOSITORY}" \
+                --output "$DEPLOYS_FILE" \
+                --write-out "%{http_code}" \
+                "${NETLIFY_API_BASE_URL}/sites/${NETLIFY_SITE_ID}/deploys?per_page=50"
+            )"
+
+            if [[ ! "$HTTP_STATUS" =~ ^2[0-9][0-9]$ ]]; then
+              API_MESSAGE="$(
+                jq -r \
+                  '.message // .error // "Unknown Netlify API error"' \
+                  "$DEPLOYS_FILE" \
+                  2>/dev/null \
+                  || true
+              )"
+
+              echo "::error::Netlify API 요청 실패 HTTP ${HTTP_STATUS}: ${API_MESSAGE}"
+              exit 1
+            fi
+
+            if ! jq -e 'type == "array"' "$DEPLOYS_FILE" > /dev/null; then
+              echo "::error::Netlify API 응답이 Deploy 배열이 아닙니다."
+              exit 1
+            fi
+
+            jq \
+              --arg sha "$MERGE_SHA" \
+              --arg short_sha "$SHORT_SHA" \
+              --arg branch "$NETLIFY_PRODUCTION_BRANCH" \
+              '
+                map(
+                  select(
+                    (
+                      (.commit_ref // "") == $sha or
+                      (.commit_ref // "") == $short_sha or
+                      (.commit_ref // "") | startswith($sha) or
+                      $sha | startswith(.commit_ref // "__no_match__")
+                    )
+                    and
+                    (
+                      (.branch // $branch) == $branch or
+                      (.context // "") == "production"
+                    )
+                  )
+                )
+                | sort_by(.created_at // "")
+                | reverse
+                | .[0] // null
+              ' \
+              "$DEPLOYS_FILE" \
+              > "$MATCH_FILE"
+
+            if [[ "$(jq -r 'type' "$MATCH_FILE")" == "object" ]]; then
+              FOUND=true
+
+              DEPLOY_ID="$(
+                jq -r '.id // empty' \
+                  "$MATCH_FILE"
+              )"
+
+              FINAL_STATE="$(
+                jq -r '.state // "unknown"' \
+                  "$MATCH_FILE"
+              )"
+
+              DEPLOY_URL="$(
+                jq -r '.ssl_url // .url // .deploy_ssl_url // .deploy_url // empty' \
+                  "$MATCH_FILE"
+              )"
+
+              ADMIN_URL="$(
+                jq -r '.admin_url // empty' \
+                  "$MATCH_FILE"
+              )"
+
+              ERROR_MESSAGE="$(
+                jq -r '.error_message // empty' \
+                  "$MATCH_FILE"
+              )"
+
+              CONTEXT="$(
+                jq -r '.context // empty' \
+                  "$MATCH_FILE"
+              )"
+
+              BRANCH="$(
+                jq -r '.branch // empty' \
+                  "$MATCH_FILE"
+              )"
+
+              COMMIT_REF="$(
+                jq -r '.commit_ref // empty' \
+                  "$MATCH_FILE"
+              )"
+
+              echo "Deploy 발견: ${DEPLOY_ID}, state=${FINAL_STATE}"
+
+              case "$FINAL_STATE" in
+                ready)
+                  break
+                  ;;
+
+                error)
+                  break
+                  ;;
+
+                canceled)
+                  break
+                  ;;
+
+                *)
+                  ;;
+              esac
+            fi
+
+            if (( attempt < NETLIFY_POLL_ATTEMPTS )); then
+              sleep "$NETLIFY_POLL_INTERVAL_SECONDS"
+            fi
+          done
+
+          if [[ "$FOUND" != "true" ]]; then
+            FINAL_STATE="not-found"
+          elif [[ "$FINAL_STATE" != "ready" ]] \
+            && [[ "$FINAL_STATE" != "error" ]] \
+            && [[ "$FINAL_STATE" != "canceled" ]]; then
+            FINAL_STATE="timeout"
+          fi
+
+          {
+            echo "found=${FOUND}"
+            echo "deploy_id=${DEPLOY_ID}"
+            echo "state=${FINAL_STATE}"
+            echo "deploy_url=${DEPLOY_URL}"
+            echo "admin_url=${ADMIN_URL}"
+            echo "context=${CONTEXT}"
+            echo "branch=${BRANCH}"
+            echo "commit_ref=${COMMIT_REF}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "# Netlify Deployment Result"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| Merge SHA | \`${MERGE_SHA}\` |"
+            echo "| Deploy found | \`${FOUND}\` |"
+            echo "| Deploy ID | \`${DEPLOY_ID:-none}\` |"
+            echo "| State | \`${FINAL_STATE}\` |"
+            echo "| Context | \`${CONTEXT:-unknown}\` |"
+            echo "| Branch | \`${BRANCH:-unknown}\` |"
+            echo "| Commit ref | \`${COMMIT_REF:-unknown}\` |"
+            echo "| Deploy URL | ${DEPLOY_URL:-none} |"
+
+            if [[ -n "$ERROR_MESSAGE" ]]; then
+              echo
+              echo "## Netlify Error"
+              echo
+              echo '```text'
+              printf '%s\n' "$ERROR_MESSAGE" \
+                | sed -E \
+                  's/(token|secret|password|authorization)[=: ][^ ]+/\1=[REDACTED]/Ig'
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$FINAL_STATE" != "ready" ]]; then
+            echo "::error::Netlify Production Deploy가 ready 상태가 아닙니다: ${FINAL_STATE}"
+            exit 1
+          fi
+
+      - name: Ensure deployment labels
+        if: >-
+          always() &&
+          steps.input.outputs.should_run == 'true' &&
+          steps.input.outputs.dry_run != 'true' &&
+          steps.input.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "deployment:ready" \
+            --repo "$REPOSITORY" \
+            --color "0E8A16" \
+            --description "Production deployment is ready" \
+            --force
+
+          gh label create "deployment:failed" \
+            --repo "$REPOSITORY" \
+            --color "D73A4A" \
+            --description "Production deployment failed or timed out" \
+            --force
+
+          gh label create "state:deployment-review" \
+            --repo "$REPOSITORY" \
+            --color "FBCA04" \
+            --description "Deployment failure requires review" \
+            --force
+
+      - name: Record successful production deployment
+        if: >-
+          success() &&
+          steps.deploy.outcome == 'success' &&
+          steps.input.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.input.outputs.issue_number }}
+          TASK_ID: ${{ steps.input.outputs.task_id }}
+          MERGE_SHA: ${{ steps.input.outputs.merge_sha }}
+          DEPLOY_ID: ${{ steps.deploy.outputs.deploy_id }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.deploy_url }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --remove-label "deployment:failed" \
+            --remove-label "state:deployment-review" \
+            --add-label "deployment:ready" \
+            || true
+
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body "$(
+              cat <<EOF
+          <!-- juleswhile:netlify-ready -->
+
+          ## Netlify Production Deploy 완료
+
+          \`${TASK_ID:-TASK}\`의 \`main\` 병합 결과가 Netlify Production에 배포됐습니다.
+
+          | 항목 | 값 |
+          |---|---|
+          | Merge Commit | \`${MERGE_SHA}\` |
+          | Netlify Deploy | \`${DEPLOY_ID}\` |
+          | 상태 | \`ready\` |
+
+          $(
+            if [[ -n "$DEPLOY_URL" ]]; then
+              printf '%s\n' "[Production 결과 확인](${DEPLOY_URL})"
+            else
+              printf '%s\n' "Production URL은 API 응답에 포함되지 않았습니다."
+            fi
+          )
+          EOF
+            )"
+
+      - name: Record deployment failure
+        if: >-
+          failure() &&
+          steps.input.outputs.should_run == 'true' &&
+          steps.input.outputs.dry_run != 'true' &&
+          steps.input.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.input.outputs.issue_number }}
+          TASK_ID: ${{ steps.input.outputs.task_id }}
+          MERGE_SHA: ${{ steps.input.outputs.merge_sha }}
+          DEPLOY_STATE: ${{ steps.deploy.outputs.state }}
+          DEPLOY_ID: ${{ steps.deploy.outputs.deploy_id }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.deploy_url }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh issue reopen "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            || true
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --remove-label "deployment:ready" \
+            --add-label "deployment:failed,state:deployment-review" \
+            || true
+
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body "$(
+              cat <<EOF
+          <!-- juleswhile:netlify-failed -->
+
+          ## Netlify Production Deploy 검증 실패
+
+          \`${TASK_ID:-TASK}\`의 \`main\` 병합 결과를 Production 배포로 확인하지 못했습니다.
+
+          | 항목 | 값 |
+          |---|---|
+          | Merge Commit | \`${MERGE_SHA}\` |
+          | Netlify Deploy | \`${DEPLOY_ID:-not-found}\` |
+          | 상태 | \`${DEPLOY_STATE:-workflow-error}\` |
+          | Workflow Run | ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} |
+
+          Production 장애 여부를 확인하고 Correction 또는 Incident Issue를 생성하십시오.
+
+          $(
+            if [[ -n "$DEPLOY_URL" ]]; then
+              printf '%s\n' "[Deploy 결과 확인](${DEPLOY_URL})"
+            fi
+          )
+          EOF
+            )" \
+            || true
