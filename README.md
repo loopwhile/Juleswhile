@@ -86,7 +86,7 @@ AI가 완료했다고 주장하는 것과 검증된 완료를 구분한다.
 
 ## 새 프로젝트 빠른 시작
 
-전체 설명은 [`docs/07_operations/operator-guide.md`](docs/07_operations/operator-guide.md)를 따른다.
+전체 설명은 [`operator-guide.md`](operator-guide.md)를 따른다.
 
 ### 1. 환경값 결정
 
@@ -516,7 +516,7 @@ Secret 값은 다시 표시되지 않는 것이 정상이다.
 
 ## 상세 문서
 
-* [`docs/07_operations/operator-guide.md`](docs/07_operations/operator-guide.md)
+* [`operator-guide.md`](operator-guide.md)
 
   * 새 프로젝트 초기화
   * GitHub 연결
