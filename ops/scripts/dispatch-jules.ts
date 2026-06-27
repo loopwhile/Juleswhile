@@ -445,8 +445,7 @@ function validateTaskContract(
     !force
   ) {
     fail(
-      `${task.id}는 실행 전 사람 승인이 필요하지만 ` +
-        "추적 Issue가 연결되지 않았습니다.",
+      `${task.id}는 실행 전 사람 승인이 필요하지만 추적 Issue가 연결되지 않았습니다.`,
     );
   }
 
@@ -917,8 +916,7 @@ async function createJulesSession(
 
   if (!response.ok) {
     fail(
-      `Jules API 요청 실패 HTTP ${response.status}: ` +
-        getApiErrorMessage(parsed, rawBody),
+      `Jules API 요청 실패 HTTP ${response.status}: ${getApiErrorMessage(parsed, rawBody)}`,
     );
   }
 

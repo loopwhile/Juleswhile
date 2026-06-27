@@ -1095,7 +1095,7 @@ function buildInstanceProposalBody(
     "",
     `- Template: \`${templateId}\``,
     `- Instance key: \`${instanceKey}\``,
-    `- Status: \`DRAFT\``,
+    "- Status: `DRAFT`",
     "",
     "이 Issue는 정기 콘텐츠 Template에서 생성된 TASK 제안입니다.",
     "",
