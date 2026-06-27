@@ -2,26 +2,129 @@
   "schemaVersion": 1,
   "projectId": "juleswhile",
   "stateAuthority": "github-issues-and-pull-requests",
-  "status": "bootstrap",
-  "phase": "bootstrap",
+  "status": "active",
+  "phase": "planning",
   "primaryBranch": "main",
   "repository": {
-    "fullName": null,
-    "htmlUrl": null,
+    "fullName": "loopwhile/Juleswhile",
+    "htmlUrl": "https://github.com/loopwhile/Juleswhile",
     "julesSourceName": null
   },
-  "projectGoal": null,
+  "projectGoal": {
+    "schemaVersion": 1,
+    "projectId": "juleswhile",
+    "name": "Juleswhile Planner Smoke Test",
+    "type": "internal-automation",
+    "status": "active",
+    "objective": "Juleswhile 오케스트레이션의 최초 통합 Smoke Test를 수행한다.",
+    "problem": "시스템이 정상적으로 Goal Intake부터 PR 생성, 검증까지 이어지는지 확인해야 한다.",
+    "targetUsers": [
+      "Juleswhile System Administrators"
+    ],
+    "expectedDeliverables": [
+      "docs/01_overview/juleswhile-smoke-test.md",
+      "ops/tasks/task-index.yaml (updated)",
+      "ops/state/project-state.json (updated)"
+    ],
+    "coreFeatures": [
+      "Smoke Test"
+    ],
+    "constraints": [
+      "Do not activate automation variables",
+      "Do not expose or modify secrets",
+      "Do not change Netlify settings",
+      "Do not execute existing tasks",
+      "Do not perform large-scale rewrites"
+    ],
+    "sourcePolicy": {
+      "preferredSources": [
+        "AGENTS.md",
+        "README.md",
+        "PROJECT_GOAL.md"
+      ],
+      "allowedSources": [
+        "ops/roles/**",
+        "ops/schemas/**"
+      ],
+      "prohibitedSources": [],
+      "freshnessRequirement": "latest",
+      "verificationRequirements": [
+        "Schema validation",
+        "Task graph validation"
+      ]
+    },
+    "teamScope": [
+      "project-planner",
+      "verifier"
+    ],
+    "autonomyMode": "guarded",
+    "publishingMode": "human-approval-required",
+    "qualityGates": [
+      {
+        "id": "QG-001",
+        "name": "Schema and Graph Validation",
+        "required": true
+      }
+    ],
+    "outOfScope": [
+      "Application feature implementation",
+      "Workflow modification"
+    ],
+    "risks": [
+      {
+        "id": "RISK-001",
+        "description": "Modifying non-allowed files could break orchestration or security policies.",
+        "level": "low",
+        "status": "mitigating",
+        "mitigation": "Strictly follow AGENTS.md and restrict changes to allowed paths."
+      }
+    ],
+    "acceptanceCriteria": [
+      {
+        "id": "AC-001",
+        "statement": "Planner Session이 정상 생성된다.",
+        "verificationMethod": "GitHub Actions logs",
+        "required": true
+      },
+      {
+        "id": "AC-002",
+        "statement": "Jules가 저장소를 읽는다.",
+        "verificationMethod": "Jules Session logs",
+        "required": true
+      },
+      {
+        "id": "AC-003",
+        "statement": "Pull Request가 생성된다.",
+        "verificationMethod": "GitHub Pull Requests",
+        "required": true
+      },
+      {
+        "id": "AC-004",
+        "statement": "PR Validation Workflow가 실행된다.",
+        "verificationMethod": "GitHub Actions",
+        "required": true
+      }
+    ],
+    "decisionsRequired": [],
+    "source": {
+      "issueNumber": 1,
+      "issueUrl": "https://github.com/loopwhile/Juleswhile/issues/1",
+      "repository": "loopwhile/Juleswhile"
+    },
+    "createdAt": "2026-06-27T00:00:00+09:00",
+    "updatedAt": "2026-06-27T00:00:00+09:00"
+  },
   "automation": {
     "enabled": false,
     "contentEnabled": false,
-    "netlifyStatusEnabled": false,
+    "netlifyStatusEnabled": true,
     "mode": "guarded",
     "pausedReason": "Bootstrap is incomplete. Keep automation disabled until schemas, scripts, workflows, and dry-run validation are complete."
   },
   "taskSummary": {
-    "total": 0,
+    "total": 1,
     "draft": 0,
-    "ready": 0,
+    "ready": 1,
     "queued": 0,
     "dispatching": 0,
     "running": 0,
