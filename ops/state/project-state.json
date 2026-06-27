@@ -127,8 +127,8 @@
     "ready": 1,
     "queued": 0,
     "dispatching": 0,
-    "running": 1,
-    "prOpened": 0,
+    "running": 0,
+    "prOpened": 1,
     "validating": 0,
     "correcting": 0,
     "mergeReady": 0,
@@ -165,5 +165,5 @@
   },
   "lastEvent": null,
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-06-27T09:45:18Z"
+  "updatedAt": "2026-06-27T09:45:54Z"
 }
