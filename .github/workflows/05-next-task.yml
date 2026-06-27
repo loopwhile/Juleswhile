@@ -338,6 +338,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TASK_ID: ${{ steps.selection.outputs.task_id }}
           ISSUE_NUMBER: ${{ steps.selection.outputs.issue_number }}
+          FORCE_RUN: ${{ steps.input.outputs.force }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -347,13 +348,14 @@ jobs:
           jq -n \
             --arg task_id "$TASK_ID" \
             --argjson issue_number "$ISSUE_NUMBER" \
+            --argjson force "$FORCE_RUN" \
             '{
               event_type: "task_ready",
               client_payload: {
                 task_id: $task_id,
                 issue_number: $issue_number,
                 dry_run: false,
-                force: false
+                force: $force
               }
             }' \
             > "$PAYLOAD_FILE"
