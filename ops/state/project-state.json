@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "projectId": "juleswhile",
+  "stateAuthority": "github-issues-and-pull-requests",
+  "status": "bootstrap",
+  "phase": "bootstrap",
+  "primaryBranch": "main",
+  "repository": {
+    "fullName": null,
+    "htmlUrl": null,
+    "julesSourceName": null
+  },
+  "projectGoal": null,
+  "automation": {
+    "enabled": false,
+    "contentEnabled": false,
+    "netlifyStatusEnabled": false,
+    "mode": "guarded",
+    "pausedReason": "Bootstrap is incomplete. Keep automation disabled until schemas, scripts, workflows, and dry-run validation are complete."
+  },
+  "taskSummary": {
+    "total": 0,
+    "draft": 0,
+    "ready": 0,
+    "queued": 0,
+    "dispatching": 0,
+    "running": 0,
+    "prOpened": 0,
+    "validating": 0,
+    "correcting": 0,
+    "mergeReady": 0,
+    "merged": 0,
+    "deploying": 0,
+    "completed": 0,
+    "failed": 0,
+    "timeout": 0,
+    "retryWait": 0,
+    "blocked": 0,
+    "cancelled": 0,
+    "templates": 1
+  },
+  "runtime": {
+    "activeSessions": [],
+    "activePullRequests": [],
+    "resourceLocks": [],
+    "lastReconciledAt": null
+  },
+  "quotas": {
+    "date": null,
+    "hardLimit": 100,
+    "newTaskBudget": 65,
+    "correctionBudget": 20,
+    "maintenanceBudget": 10,
+    "reserve": 5,
+    "maxConcurrent": 10,
+    "used": {
+      "newTasks": 0,
+      "corrections": 0,
+      "maintenance": 0,
+      "total": 0
+    }
+  },
+  "lastEvent": null,
+  "createdAt": "2026-06-27T00:00:00+09:00",
+  "updatedAt": "2026-06-27T00:00:00+09:00"
+}

@@ -1,0 +1,676 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://juleswhile.local/schemas/task.schema.json",
+  "title": "Juleswhile TASK Index",
+  "description": "Schema for the Juleswhile TASK manifest and individual executable TASK contracts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "generated_at",
+    "updated_at",
+    "defaults",
+    "tasks"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "project_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$",
+      "minLength": 3,
+      "maxLength": 64
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "defaults": {
+      "$ref": "#/$defs/taskDefaults"
+    },
+    "tasks": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "$ref": "#/$defs/task"
+      }
+    }
+  },
+  "$defs": {
+    "taskId": {
+      "type": "string",
+      "pattern": "^TASK-[0-9]{3,}$"
+    },
+    "nonEmptyText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 5000,
+      "pattern": ".*\\S.*"
+    },
+    "pathPattern": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^(?!/)(?!.*\\.\\./)(?!.*\\\\).+$"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "project-planner",
+        "business-analyst",
+        "researcher",
+        "marketer",
+        "solution-architect",
+        "ux-designer",
+        "developer",
+        "verifier",
+        "reviewer",
+        "publisher",
+        "operations"
+      ]
+    },
+    "taskType": {
+      "type": "string",
+      "enum": [
+        "planning",
+        "decomposition",
+        "requirements",
+        "policy",
+        "research",
+        "source-review",
+        "fact-check",
+        "market-analysis",
+        "documentation",
+        "architecture",
+        "system-design",
+        "api-design",
+        "data-design",
+        "security-design",
+        "design",
+        "stitch-design",
+        "implementation",
+        "refactoring",
+        "bug-fix",
+        "testing",
+        "verification",
+        "review",
+        "content",
+        "deployment",
+        "maintenance",
+        "operations",
+        "correction"
+      ]
+    },
+    "taskStatus": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "READY",
+        "QUEUED",
+        "DISPATCHING",
+        "RUNNING",
+        "PR_OPENED",
+        "VALIDATING",
+        "CORRECTING",
+        "MERGE_READY",
+        "MERGED",
+        "DEPLOYING",
+        "COMPLETED",
+        "FAILED",
+        "TIMEOUT",
+        "RETRY_WAIT",
+        "BLOCKED",
+        "CANCELLED",
+        "TEMPLATE"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ]
+    },
+    "riskLevel": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
+    },
+    "approvalPolicy": {
+      "type": "string",
+      "enum": [
+        "automatic",
+        "reviewer",
+        "human",
+        "human-before-execution"
+      ]
+    },
+    "retryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_corrections",
+        "timeout_minutes"
+      ],
+      "properties": {
+        "max_corrections": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "timeout_minutes": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 1440
+        }
+      }
+    },
+    "taskDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_policy",
+        "risk_level",
+        "max_parallel_tasks",
+        "retry_policy"
+      ],
+      "properties": {
+        "approval_policy": {
+          "$ref": "#/$defs/approvalPolicy"
+        },
+        "risk_level": {
+          "$ref": "#/$defs/riskLevel"
+        },
+        "max_parallel_tasks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 15
+        },
+        "retry_policy": {
+          "$ref": "#/$defs/retryPolicy"
+        }
+      }
+    },
+    "stitchPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed"
+      ],
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "expected_outputs": {
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/nonEmptyText"
+          }
+        }
+      }
+    },
+    "recurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "schedule",
+        "timezone",
+        "instance_id_strategy",
+        "max_instances_per_day"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "schedule": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "instance_id_strategy": {
+          "type": "string",
+          "enum": [
+            "sequence",
+            "date",
+            "date-time",
+            "external"
+          ]
+        },
+        "max_instances_per_day": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "taskMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "created_at",
+        "updated_at",
+        "created_by",
+        "tags"
+      ],
+      "properties": {
+        "goal_issue_number": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issue_number": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_by": {
+          "type": "string",
+          "enum": [
+            "template",
+            "user",
+            "project-planner",
+            "github-actions",
+            "reconciler"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          }
+        },
+        "template_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/taskId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "instance_key": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "title",
+        "role",
+        "type",
+        "status",
+        "priority",
+        "enabled",
+        "objective",
+        "depends_on",
+        "inputs",
+        "outputs",
+        "acceptance_criteria",
+        "allowed_paths",
+        "forbidden_paths",
+        "forbidden_actions",
+        "validation_commands",
+        "risk_level",
+        "approval_policy",
+        "parallelizable",
+        "resource_locks",
+        "conflicts_with",
+        "retry_policy",
+        "stitch",
+        "metadata"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "task",
+            "template"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/taskId"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "type": {
+          "$ref": "#/$defs/taskType"
+        },
+        "status": {
+          "$ref": "#/$defs/taskStatus"
+        },
+        "priority": {
+          "$ref": "#/$defs/priority"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 5000
+        },
+        "depends_on": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/taskId"
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyText"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyText"
+          }
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyText"
+          }
+        },
+        "allowed_paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pathPattern"
+          }
+        },
+        "forbidden_paths": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pathPattern"
+          }
+        },
+        "forbidden_actions": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyText"
+          }
+        },
+        "validation_commands": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "^(?!.*[\\r\\n]).+$"
+          }
+        },
+        "risk_level": {
+          "$ref": "#/$defs/riskLevel"
+        },
+        "approval_policy": {
+          "$ref": "#/$defs/approvalPolicy"
+        },
+        "parallelizable": {
+          "type": "boolean"
+        },
+        "resource_locks": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:-]*$"
+          }
+        },
+        "conflicts_with": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/taskId"
+          }
+        },
+        "retry_policy": {
+          "$ref": "#/$defs/retryPolicy"
+        },
+        "stitch": {
+          "$ref": "#/$defs/stitchPolicy"
+        },
+        "recurrence": {
+          "$ref": "#/$defs/recurrence"
+        },
+        "metadata": {
+          "$ref": "#/$defs/taskMetadata"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "template"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "TEMPLATE"
+              },
+              "enabled": {
+                "const": false
+              }
+            },
+            "required": [
+              "recurrence"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "task"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "properties": {
+                "status": {
+                  "const": "TEMPLATE"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "READY",
+                  "QUEUED",
+                  "DISPATCHING",
+                  "RUNNING"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "risk_level": {
+                "const": "critical"
+              }
+            },
+            "required": [
+              "risk_level"
+            ]
+          },
+          "then": {
+            "properties": {
+              "approval_policy": {
+                "enum": [
+                  "human",
+                  "human-before-execution"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "risk_level": {
+                "const": "high"
+              }
+            },
+            "required": [
+              "risk_level"
+            ]
+          },
+          "then": {
+            "properties": {
+              "approval_policy": {
+                "enum": [
+                  "reviewer",
+                  "human",
+                  "human-before-execution"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "const": "ux-designer"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "then": {
+            "properties": {
+              "stitch": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
