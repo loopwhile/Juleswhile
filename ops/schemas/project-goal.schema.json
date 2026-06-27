@@ -1,0 +1,513 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://juleswhile.local/schemas/project-goal.schema.json",
+  "title": "Juleswhile Project Goal",
+  "description": "Normalized project goal created from a GitHub Project Goal Issue.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "name",
+    "type",
+    "status",
+    "objective",
+    "problem",
+    "targetUsers",
+    "expectedDeliverables",
+    "coreFeatures",
+    "constraints",
+    "sourcePolicy",
+    "teamScope",
+    "autonomyMode",
+    "publishingMode",
+    "qualityGates",
+    "outOfScope",
+    "risks",
+    "acceptanceCriteria",
+    "decisionsRequired",
+    "source",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$",
+      "minLength": 3,
+      "maxLength": 64
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "ai-trend-news-factory",
+        "financial-research-factory",
+        "content-factory",
+        "research-report-system",
+        "marketing-system",
+        "company-website",
+        "content-website",
+        "fullstack-web-service",
+        "internal-automation",
+        "data-collection-analysis",
+        "existing-project-improvement",
+        "other"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "paused",
+        "blocked",
+        "completed",
+        "cancelled"
+      ]
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 5000
+    },
+    "problem": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 5000
+    },
+    "targetUsers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyText"
+      }
+    },
+    "expectedDeliverables": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyText"
+      }
+    },
+    "coreFeatures": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyText"
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyText"
+      }
+    },
+    "sourcePolicy": {
+      "$ref": "#/$defs/sourcePolicy"
+    },
+    "teamScope": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "project-planner",
+          "business-analyst",
+          "researcher",
+          "marketer",
+          "solution-architect",
+          "ux-designer",
+          "developer",
+          "verifier",
+          "reviewer",
+          "publisher",
+          "operations"
+        ]
+      }
+    },
+    "autonomyMode": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "guarded",
+        "limited-autonomous"
+      ]
+    },
+    "publishingMode": {
+      "type": "string",
+      "enum": [
+        "human-approval-required",
+        "ci-pass-auto-deploy",
+        "content-auto-publish",
+        "draft-only",
+        "project-defined"
+      ]
+    },
+    "qualityGates": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/qualityGate"
+      }
+    },
+    "outOfScope": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyText"
+      }
+    },
+    "deferred": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/nonEmptyText"
+      }
+    },
+    "risks": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/risk"
+      }
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/acceptanceCriterion"
+      }
+    },
+    "decisionsRequired": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/decisionRequired"
+      }
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "targetDate": {
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "date"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "additionalContext": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/nonEmptyText"
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "nonEmptyText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "pattern": ".*\\S.*"
+    },
+    "sourcePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preferredSources",
+        "allowedSources",
+        "prohibitedSources",
+        "freshnessRequirement",
+        "verificationRequirements"
+      ],
+      "properties": {
+        "preferredSources": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyText"
+          }
+        },
+        "allowedSources": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyText"
+          }
+        },
+        "prohibitedSources": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyText"
+          }
+        },
+        "freshnessRequirement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "verificationRequirements": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyText"
+          }
+        }
+      }
+    },
+    "qualityGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "required"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^QG-[0-9]{3,}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "command": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "appliesTo": {
+          "type": "array",
+          "uniqueItems": true,
+          "default": [],
+          "items": {
+            "type": "string",
+            "enum": [
+              "planning",
+              "research",
+              "documentation",
+              "architecture",
+              "design",
+              "implementation",
+              "testing",
+              "review",
+              "content",
+              "deployment",
+              "maintenance",
+              "correction"
+            ]
+          }
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "description",
+        "level",
+        "status",
+        "mitigation"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^RISK-[0-9]{3,}$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "identified",
+            "accepted",
+            "mitigating",
+            "blocked",
+            "resolved"
+          ]
+        },
+        "mitigation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "owner": {
+          "type": "string",
+          "maxLength": 100
+        }
+      }
+    },
+    "acceptanceCriterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "statement",
+        "verificationMethod",
+        "required"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^AC-[0-9]{3,}$"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "verificationMethod": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "decisionRequired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "question",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^DECISION-[0-9]{3,}$"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "options": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyText"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "decided",
+            "deferred"
+          ]
+        },
+        "decision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2000
+        },
+        "requiredBeforeTask": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^TASK-[0-9]{3,}$"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issueNumber",
+        "issueUrl",
+        "repository"
+      ],
+      "properties": {
+        "issueNumber": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "issueUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://github\\.com/"
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        }
+      }
+    }
+  }
+}
