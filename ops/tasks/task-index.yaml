@@ -1,7 +1,7 @@
 schema_version: 1
 project_id: juleswhile
 generated_at: "2026-06-27T00:00:00+09:00"
-updated_at: "2026-06-27T09:30:44Z"
+updated_at: "2026-06-27T09:45:18Z"
 
 defaults:
   approval_policy: reviewer
@@ -185,7 +185,7 @@ tasks:
     title: Harden Juleswhile control-plane workflows
     role: developer
     type: bug-fix
-    status: COMPLETED
+    status: RUNNING
     priority: P0
     enabled: false
 
@@ -280,9 +280,9 @@ tasks:
 
     metadata:
       goal_issue_number: 1
-      issue_number: null
+      issue_number: 3
       created_at: "2026-06-27T09:30:44Z"
-      updated_at: "2026-06-27T09:30:44Z"
+      updated_at: "2026-06-27T09:45:18Z"
       created_by: user
 
       tags:
