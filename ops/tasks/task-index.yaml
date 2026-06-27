@@ -1,7 +1,7 @@
 schema_version: 1
 project_id: juleswhile
 generated_at: "2026-06-27T00:00:00+09:00"
-updated_at: "2026-06-27T11:43:29Z"
+updated_at: "2026-06-27T12:55:19Z"
 
 defaults:
   approval_policy: reviewer
@@ -173,9 +173,9 @@ tasks:
 
     metadata:
       goal_issue_number: 1
-      issue_number: null
+      issue_number: 5
       created_at: "2026-06-27T00:00:00+09:00"
-      updated_at: "2026-06-27T00:00:00+09:00"
+      updated_at: "2026-06-27T12:55:19Z"
       created_by: project-planner
 
       tags:
