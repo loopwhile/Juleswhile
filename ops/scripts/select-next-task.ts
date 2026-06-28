@@ -7,7 +7,6 @@ import process from "node:process";
 import { parse as parseYaml } from "yaml";
 
 const TASK_INDEX_PATH = "ops/tasks/task-index.yaml";
-const PROJECT_STATE_PATH = "ops/state/project-state.json";
 
 const GITHUB_API_BASE_URL =
   process.env.GITHUB_API_URL ??
@@ -35,6 +34,12 @@ const COMPLETED_STATUSES = new Set([
   "COMPLETED",
   "MERGED",
 ]);
+
+const QUOTA_LEDGER_MARKER =
+  "<!-- juleswhile:quota-ledger -->";
+
+const LEGACY_DISPATCH_MARKER =
+  "<!-- juleswhile:task-dispatch -->";
 
 interface CliOptions {
   responseFile: string;
@@ -74,17 +79,6 @@ interface TaskIndex {
   tasks: TaskContract[];
 }
 
-interface ProjectState {
-  quotas?: {
-    used?: {
-      newTasks?: number;
-      corrections?: number;
-      maintenance?: number;
-      total?: number;
-    };
-  };
-}
-
 interface GitHubIssue {
   number: number;
   title: string;
@@ -102,9 +96,32 @@ interface GitHubIssue {
   >;
 }
 
+interface GitHubComment {
+  body?: string | null;
+  created_at: string;
+}
+
 interface Candidate {
   task: TaskContract;
   issue: GitHubIssue;
+}
+
+interface RuntimeQuotaUsage {
+  newTasks: number;
+  corrections: number;
+  maintenance: number;
+  total: number;
+}
+
+interface QuotaLedgerEvent {
+  event: string;
+  status: string;
+  date: string;
+  category: "new" | "correction" | "maintenance";
+  taskId: string;
+  issueNumber: number;
+  reservationKey: string;
+  createdAt: string;
 }
 
 interface SelectionResult {
@@ -424,24 +441,6 @@ async function readTaskIndex(): Promise<TaskIndex> {
   return taskIndex as TaskIndex;
 }
 
-async function readProjectState(): Promise<ProjectState> {
-  try {
-    const content =
-      await readTextFile(PROJECT_STATE_PATH);
-
-    return JSON.parse(
-      content,
-    ) as ProjectState;
-  } catch (error) {
-    throw new Error(
-      `${PROJECT_STATE_PATH} 파싱에 실패했습니다.`,
-      {
-        cause: error,
-      },
-    );
-  }
-}
-
 function getRepository(): string {
   const repository =
     process.env.REPOSITORY ??
@@ -556,6 +555,33 @@ async function listIssues(
   }
 
   return issues;
+}
+
+async function listComments(
+  repository: string,
+  issueNumber: number,
+): Promise<GitHubComment[]> {
+  const comments: GitHubComment[] = [];
+
+  for (
+    let page = 1;
+    page <= 100;
+    page += 1
+  ) {
+    const batch =
+      await githubRequest<GitHubComment[]>(
+        repository,
+        `/issues/${issueNumber}/comments?per_page=100&page=${page}`,
+      );
+
+    comments.push(...batch);
+
+    if (batch.length < 100) {
+      break;
+    }
+  }
+
+  return comments;
 }
 
 function getLabels(
@@ -738,16 +764,239 @@ function getTaskCategory(
   return "new";
 }
 
+function formatUtcDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function parseLedgerField(
+  body: string,
+  field: string,
+): string {
+  const match = body.match(
+    new RegExp(`^${field}:\\s*(.+)$`, "im"),
+  );
+
+  return match?.[1]?.trim() ?? "";
+}
+
+function parseQuotaLedgerEvent(
+  comment: GitHubComment,
+): QuotaLedgerEvent | null {
+  const body = comment.body ?? "";
+
+  if (!body.includes(QUOTA_LEDGER_MARKER)) {
+    return null;
+  }
+
+  const event = parseLedgerField(
+    body,
+    "event",
+  );
+
+  const status = parseLedgerField(
+    body,
+    "status",
+  );
+
+  const category = parseLedgerField(
+    body,
+    "category",
+  );
+
+  const taskId = parseLedgerField(
+    body,
+    "task_id",
+  ).toUpperCase();
+
+  const issueNumber = Number(
+    parseLedgerField(
+      body,
+      "issue_number",
+    ),
+  );
+
+  const reservationKey = parseLedgerField(
+    body,
+    "reservation_key",
+  );
+
+  const date =
+    parseLedgerField(body, "date") ||
+    formatUtcDate(
+      new Date(comment.created_at),
+    );
+
+  if (
+    ![
+      "quota-reserved",
+      "quota-committed",
+      "quota-released",
+      "quota-invalidated",
+    ].includes(event) ||
+    !["reserved", "committed", "released", "invalidated"].includes(
+      status,
+    ) ||
+    !["new", "correction", "maintenance"].includes(category) ||
+    !TASK_ID_PATTERN.test(taskId) ||
+    !Number.isSafeInteger(issueNumber) ||
+    issueNumber < 1 ||
+    reservationKey === ""
+  ) {
+    return null;
+  }
+
+  return {
+    event,
+    status,
+    date,
+    category:
+      category as QuotaLedgerEvent["category"],
+    taskId,
+    issueNumber,
+    reservationKey,
+    createdAt: comment.created_at,
+  };
+}
+
+function legacyDispatchCountsForDate(
+  comment: GitHubComment,
+  date: string,
+): boolean {
+  const body = comment.body ?? "";
+
+  return (
+    body.includes(LEGACY_DISPATCH_MARKER) &&
+    formatUtcDate(
+      new Date(comment.created_at),
+    ) === date
+  );
+}
+
+function buildRuntimeQuotaUsage(
+  taskIndex: TaskIndex,
+  issueMap: Map<string, GitHubIssue>,
+  commentsByIssue: Map<number, GitHubComment[]>,
+  date: string,
+): RuntimeQuotaUsage {
+  const usage: RuntimeQuotaUsage = {
+    newTasks: 0,
+    corrections: 0,
+    maintenance: 0,
+    total: 0,
+  };
+
+  const taskMap = new Map(
+    taskIndex.tasks.map(
+      (task) => [task.id, task],
+    ),
+  );
+
+  const eventByReservation =
+    new Map<string, QuotaLedgerEvent>();
+
+  const committedKeys = new Set<string>();
+
+  for (const [
+    issueNumber,
+    comments,
+  ] of commentsByIssue) {
+    for (const comment of comments) {
+      const event =
+        parseQuotaLedgerEvent(comment);
+
+      if (!event || event.date !== date) {
+        continue;
+      }
+
+      const previous =
+        eventByReservation.get(
+          event.reservationKey,
+        );
+
+      if (
+        !previous ||
+        Date.parse(event.createdAt) >=
+          Date.parse(previous.createdAt)
+      ) {
+        eventByReservation.set(
+          event.reservationKey,
+          event,
+        );
+      }
+
+      if (event.status === "committed") {
+        committedKeys.add(
+          `${event.taskId}:${issueNumber}`,
+        );
+      }
+    }
+  }
+
+  for (const event of eventByReservation.values()) {
+    if (
+      event.status !== "reserved" &&
+      event.status !== "committed"
+    ) {
+      continue;
+    }
+
+    if (event.category === "correction") {
+      usage.corrections += 1;
+    } else if (event.category === "maintenance") {
+      usage.maintenance += 1;
+    } else {
+      usage.newTasks += 1;
+    }
+
+    usage.total += 1;
+  }
+
+  for (const [taskId, issue] of issueMap) {
+    const comments =
+      commentsByIssue.get(issue.number) ?? [];
+
+    if (
+      !comments.some((comment) =>
+        legacyDispatchCountsForDate(comment, date),
+      )
+    ) {
+      continue;
+    }
+
+    if (committedKeys.has(`${taskId}:${issue.number}`)) {
+      continue;
+    }
+
+    const task = taskMap.get(taskId);
+
+    if (!task) {
+      continue;
+    }
+
+    const category =
+      getTaskCategory(task);
+
+    if (category === "correction") {
+      usage.corrections += 1;
+    } else if (category === "maintenance") {
+      usage.maintenance += 1;
+    } else {
+      usage.newTasks += 1;
+    }
+
+    usage.total += 1;
+  }
+
+  return usage;
+}
+
 function hasQuota(
   task: TaskContract,
-  state: ProjectState,
+  usage: RuntimeQuotaUsage,
   options: CliOptions,
 ): boolean {
-  const used =
-    state.quotas?.used ?? {};
-
   const totalUsed =
-    used.total ?? 0;
+    usage.total;
 
   const hardUsableLimit =
     options.newTaskBudget +
@@ -766,20 +1015,20 @@ function hasQuota(
 
   if (category === "correction") {
     return (
-      (used.corrections ?? 0) <
+      usage.corrections <
       options.correctionBudget
     );
   }
 
   if (category === "maintenance") {
     return (
-      (used.maintenance ?? 0) <
+      usage.maintenance <
       options.maintenanceBudget
     );
   }
 
   return (
-    (used.newTasks ?? 0) <
+    usage.newTasks <
     options.newTaskBudget
   );
 }
@@ -883,6 +1132,22 @@ async function reserveCandidate(
   repository: string,
   candidate: Candidate,
 ): Promise<void> {
+  const now = new Date();
+  const workflowRunUrl =
+    process.env.WORKFLOW_RUN_URL ?? "unknown";
+  const workflowRunId =
+    process.env.GITHUB_RUN_ID ??
+    workflowRunUrl.match(/\/actions\/runs\/([0-9]+)/)?.[1] ??
+    "unknown";
+  const category =
+    getTaskCategory(candidate.task);
+  const reservationKey = [
+    candidate.task.id,
+    candidate.issue.number,
+    workflowRunId,
+    now.getTime(),
+  ].join("-");
+
   await ensureLabel(
     repository,
     "state:dispatching",
@@ -924,13 +1189,24 @@ async function reserveCandidate(
       body: JSON.stringify({
         body: [
           "<!-- juleswhile:task-reservation -->",
+          QUOTA_LEDGER_MARKER,
           "",
           "## TASK 실행 슬롯 예약",
           "",
           `\`${candidate.task.id}\`가 다음 실행 대상으로 예약됐습니다.`,
           "",
-          `- Reserved at: ${new Date().toISOString()}`,
-          `- Workflow Run: ${process.env.WORKFLOW_RUN_URL ?? "unknown"}`,
+          "```yaml",
+          "event: quota-reserved",
+          "status: reserved",
+          `date: ${formatUtcDate(now)}`,
+          `category: ${category}`,
+          `task_id: ${candidate.task.id}`,
+          `issue_number: ${candidate.issue.number}`,
+          `reservation_key: ${reservationKey}`,
+          `workflow_run_id: ${workflowRunId}`,
+          `workflow_run_url: ${workflowRunUrl}`,
+          `created_at: ${now.toISOString()}`,
+          "```",
           "",
           "Jules Dispatcher가 Session 생성을 완료하지 못하면 Reconciler가 이 예약을 복구합니다.",
         ].join("\n"),
@@ -980,16 +1256,34 @@ async function main(): Promise<void> {
 
   const [
     taskIndex,
-    projectState,
     issues,
   ] = await Promise.all([
     readTaskIndex(),
-    readProjectState(),
     listIssues(repository),
   ]);
 
   const issueMap =
     buildIssueMap(issues);
+
+  const commentsByIssue =
+    new Map<number, GitHubComment[]>();
+
+  await Promise.all(
+    [...issueMap.values()].map(async (issue) => {
+      commentsByIssue.set(
+        issue.number,
+        await listComments(repository, issue.number),
+      );
+    }),
+  );
+
+  const quotaUsage =
+    buildRuntimeQuotaUsage(
+      taskIndex,
+      issueMap,
+      commentsByIssue,
+      formatUtcDate(new Date()),
+    );
 
   const executableTasks =
     taskIndex.tasks.filter(
@@ -1108,7 +1402,7 @@ async function main(): Promise<void> {
     if (
       !hasQuota(
         task,
-        projectState,
+        quotaUsage,
         options,
       )
     ) {

@@ -33,6 +33,15 @@ const EXECUTION_APPROVAL_LABEL =
 const DISPATCH_MARKER =
   "<!-- juleswhile:task-dispatch -->";
 
+const QUOTA_LEDGER_MARKER =
+  "<!-- juleswhile:quota-ledger -->";
+
+const DISPATCH_INTENT_MARKER =
+  "<!-- juleswhile:dispatch-intent -->";
+
+const DISPATCH_OUTCOME_MARKER =
+  "<!-- juleswhile:dispatch-outcome -->";
+
 interface CliOptions {
   taskId: string;
   repository: string;
@@ -121,6 +130,7 @@ interface GitHubIssue {
 
 interface GitHubComment {
   body?: string | null;
+  created_at?: string;
 }
 
 interface ExistingSession {
@@ -139,6 +149,11 @@ interface JulesSessionResponse {
     message?: unknown;
   };
   message?: unknown;
+}
+
+interface RuntimeReservation {
+  key: string;
+  category: "new" | "correction" | "maintenance";
 }
 
 interface DispatchResult {
@@ -521,6 +536,7 @@ function getIssueLabels(
 async function githubRequest<T>(
   repository: string,
   route: string,
+  options: RequestInit = {},
 ): Promise<T> {
   const token = process.env.GH_TOKEN;
 
@@ -533,14 +549,17 @@ async function githubRequest<T>(
   const response = await fetch(
     `${GITHUB_API_BASE_URL}/repos/${repository}${route}`,
     {
+      ...options,
       headers: {
         Accept:
           "application/vnd.github+json",
         Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
         "X-GitHub-Api-Version":
           "2022-11-28",
         "User-Agent":
           `Juleswhile/${repository}`,
+        ...(options.headers ?? {}),
       },
     },
   );
@@ -565,6 +584,10 @@ async function githubRequest<T>(
     fail(
       `GitHub API 요청 실패 HTTP ${response.status}: ${message}`,
     );
+  }
+
+  if (body.trim() === "") {
+    return undefined as T;
   }
 
   try {
@@ -607,9 +630,43 @@ async function getIssueComments(
   repository: string,
   issueNumber: number,
 ): Promise<GitHubComment[]> {
-  return githubRequest<GitHubComment[]>(
+  const comments: GitHubComment[] = [];
+
+  for (
+    let page = 1;
+    page <= 100;
+    page += 1
+  ) {
+    const batch =
+      await githubRequest<GitHubComment[]>(
+        repository,
+        `/issues/${issueNumber}/comments?per_page=100&page=${page}`,
+      );
+
+    comments.push(...batch);
+
+    if (batch.length < 100) {
+      break;
+    }
+  }
+
+  return comments;
+}
+
+async function comment(
+  repository: string,
+  issueNumber: number,
+  body: string,
+): Promise<void> {
+  await githubRequest(
     repository,
-    `/issues/${issueNumber}/comments?per_page=100`,
+    `/issues/${issueNumber}/comments`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        body,
+      }),
+    },
   );
 }
 
@@ -652,6 +709,346 @@ function parseExistingSession(
   }
 
   return null;
+}
+
+function formatUtcDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function parseLedgerField(
+  body: string,
+  field: string,
+): string {
+  const match = body.match(
+    new RegExp(`^${field}:\\s*(.+)$`, "im"),
+  );
+
+  return match?.[1]?.trim() ?? "";
+}
+
+function getTaskCategory(
+  task: TaskContract,
+): RuntimeReservation["category"] {
+  if (task.type === "correction") {
+    return "correction";
+  }
+
+  if (
+    task.type === "maintenance" ||
+    task.type === "operations" ||
+    task.type === "deployment" ||
+    task.role === "operations"
+  ) {
+    return "maintenance";
+  }
+
+  return "new";
+}
+
+function latestActiveReservation(
+  task: TaskContract,
+  issueNumber: number,
+  comments: GitHubComment[],
+): RuntimeReservation | null {
+  const events = comments
+    .map((comment) => {
+      const body = comment.body ?? "";
+
+      if (!body.includes(QUOTA_LEDGER_MARKER)) {
+        return null;
+      }
+
+      const taskId =
+        parseLedgerField(body, "task_id").toUpperCase();
+      const parsedIssueNumber = Number(
+        parseLedgerField(body, "issue_number"),
+      );
+      const key =
+        parseLedgerField(body, "reservation_key");
+      const status =
+        parseLedgerField(body, "status");
+      const category =
+        parseLedgerField(body, "category");
+
+      if (
+        taskId !== task.id ||
+        parsedIssueNumber !== issueNumber ||
+        key === "" ||
+        !["new", "correction", "maintenance"].includes(category)
+      ) {
+        return null;
+      }
+
+      return {
+        key,
+        status,
+        category:
+          category as RuntimeReservation["category"],
+        createdAt:
+          comment.created_at ?? "",
+      };
+    })
+    .filter((event): event is {
+      key: string;
+      status: string;
+      category: RuntimeReservation["category"];
+      createdAt: string;
+    } => event !== null)
+    .sort(
+      (left, right) =>
+        Date.parse(left.createdAt) -
+        Date.parse(right.createdAt),
+    );
+
+  const latestByKey =
+    new Map<string, (typeof events)[number]>();
+
+  for (const event of events) {
+    latestByKey.set(event.key, event);
+  }
+
+  const active = [...latestByKey.values()]
+    .filter((event) =>
+      ["reserved", "committed"].includes(
+        event.status,
+      ),
+    )
+    .sort(
+      (left, right) =>
+        Date.parse(right.createdAt) -
+        Date.parse(left.createdAt),
+    );
+
+  const latest = active[0];
+
+  return latest
+    ? {
+        key: latest.key,
+        category: latest.category,
+      }
+    : null;
+}
+
+function hasBlockingDispatchIntent(
+  comments: GitHubComment[],
+): boolean {
+  const latestSessionAt = Math.max(
+    0,
+    ...comments
+      .filter((comment) =>
+        (comment.body ?? "").includes(DISPATCH_MARKER),
+      )
+      .map((comment) =>
+        Date.parse(comment.created_at ?? ""),
+      )
+      .filter(Number.isFinite),
+  );
+
+  const latestOutcomeAt = Math.max(
+    0,
+    ...comments
+      .filter((comment) =>
+        (comment.body ?? "").includes(DISPATCH_OUTCOME_MARKER),
+      )
+      .filter((comment) => {
+        const status = parseLedgerField(
+          comment.body ?? "",
+          "status",
+        );
+
+        return [
+          "released",
+          "failed",
+          "reconciled",
+        ].includes(status);
+      })
+      .map((comment) =>
+        Date.parse(comment.created_at ?? ""),
+      )
+      .filter(Number.isFinite),
+  );
+
+  const latestIntentAt = Math.max(
+    0,
+    ...comments
+      .filter((comment) =>
+        (comment.body ?? "").includes(DISPATCH_INTENT_MARKER),
+      )
+      .map((comment) =>
+        Date.parse(comment.created_at ?? ""),
+      )
+      .filter(Number.isFinite),
+  );
+
+  return (
+    latestIntentAt > latestSessionAt &&
+    latestIntentAt > latestOutcomeAt
+  );
+}
+
+function buildReservationKey(
+  task: TaskContract,
+  issueNumber: number,
+): string {
+  const workflowRunId =
+    process.env.GITHUB_RUN_ID ??
+    process.env.WORKFLOW_RUN_URL?.match(/\/actions\/runs\/([0-9]+)/)?.[1] ??
+    "manual";
+
+  return [
+    task.id,
+    issueNumber,
+    workflowRunId,
+    Date.now(),
+  ].join("-");
+}
+
+async function ensureReservation(
+  repository: string,
+  task: TaskContract,
+  issueNumber: number,
+  comments: GitHubComment[],
+): Promise<RuntimeReservation> {
+  const existing = latestActiveReservation(
+    task,
+    issueNumber,
+    comments,
+  );
+
+  if (existing) {
+    return existing;
+  }
+
+  const now = new Date();
+  const workflowRunUrl =
+    process.env.WORKFLOW_RUN_URL ?? "unknown";
+  const workflowRunId =
+    process.env.GITHUB_RUN_ID ??
+    workflowRunUrl.match(/\/actions\/runs\/([0-9]+)/)?.[1] ??
+    "manual";
+  const category =
+    getTaskCategory(task);
+  const key =
+    buildReservationKey(task, issueNumber);
+
+  await comment(
+    repository,
+    issueNumber,
+    [
+      QUOTA_LEDGER_MARKER,
+      "",
+      "## Dispatch Quota Reservation",
+      "",
+      "```yaml",
+      "event: quota-reserved",
+      "status: reserved",
+      `date: ${formatUtcDate(now)}`,
+      `category: ${category}`,
+      `task_id: ${task.id}`,
+      `issue_number: ${issueNumber}`,
+      `reservation_key: ${key}`,
+      `workflow_run_id: ${workflowRunId}`,
+      `workflow_run_url: ${workflowRunUrl}`,
+      `created_at: ${now.toISOString()}`,
+      "```",
+    ].join("\n"),
+  );
+
+  return {
+    key,
+    category,
+  };
+}
+
+async function recordDispatchIntent(
+  repository: string,
+  task: TaskContract,
+  issueNumber: number,
+  reservation: RuntimeReservation,
+): Promise<void> {
+  const now = new Date();
+  const workflowRunUrl =
+    process.env.WORKFLOW_RUN_URL ?? "unknown";
+
+  await comment(
+    repository,
+    issueNumber,
+    [
+      DISPATCH_INTENT_MARKER,
+      "",
+      "## Jules Dispatch Intent",
+      "",
+      "```yaml",
+      "event: dispatch-intent",
+      "status: creating-session",
+      `task_id: ${task.id}`,
+      `issue_number: ${issueNumber}`,
+      `reservation_key: ${reservation.key}`,
+      `workflow_run_url: ${workflowRunUrl}`,
+      `created_at: ${now.toISOString()}`,
+      "```",
+    ].join("\n"),
+  );
+}
+
+async function recordQuotaOutcome(
+  repository: string,
+  task: TaskContract,
+  issueNumber: number,
+  reservation: RuntimeReservation,
+  outcome:
+    | {
+        status: "committed";
+        session: ExistingSession;
+      }
+    | {
+        status: "released" | "invalidated";
+        reason: string;
+      },
+): Promise<void> {
+  const now = new Date();
+  const workflowRunUrl =
+    process.env.WORKFLOW_RUN_URL ?? "unknown";
+  const workflowRunId =
+    process.env.GITHUB_RUN_ID ??
+    workflowRunUrl.match(/\/actions\/runs\/([0-9]+)/)?.[1] ??
+    "manual";
+  const event =
+    outcome.status === "committed"
+      ? "quota-committed"
+      : outcome.status === "released"
+        ? "quota-released"
+        : "quota-invalidated";
+
+  await comment(
+    repository,
+    issueNumber,
+    [
+      QUOTA_LEDGER_MARKER,
+      DISPATCH_OUTCOME_MARKER,
+      "",
+      "## Jules Dispatch Runtime Outcome",
+      "",
+      "```yaml",
+      `event: ${event}`,
+      `status: ${outcome.status}`,
+      `date: ${formatUtcDate(now)}`,
+      `category: ${reservation.category}`,
+      `task_id: ${task.id}`,
+      `issue_number: ${issueNumber}`,
+      `reservation_key: ${reservation.key}`,
+      `workflow_run_id: ${workflowRunId}`,
+      `workflow_run_url: ${workflowRunUrl}`,
+      ...(outcome.status === "committed"
+        ? [
+            `session_name: ${outcome.session.name}`,
+            `session_id: ${outcome.session.id}`,
+          ]
+        : [`reason: ${outcome.reason}`]),
+      `created_at: ${now.toISOString()}`,
+      "```",
+    ].join("\n"),
+  );
 }
 
 function validateIssueForDispatch(
@@ -846,6 +1243,20 @@ function getApiErrorMessage(
   return rawBody.slice(0, 2000);
 }
 
+class JulesSessionCreationError extends Error {
+  readonly outcome: "failed" | "unknown";
+
+  constructor(
+    message: string,
+    outcome: "failed" | "unknown",
+    cause?: unknown,
+  ) {
+    super(message, { cause });
+    this.name = "JulesSessionCreationError";
+    this.outcome = outcome;
+  }
+}
+
 async function createJulesSession(
   request: Record<string, unknown>,
 ): Promise<ExistingSession> {
@@ -880,11 +1291,10 @@ async function createJulesSession(
       },
     );
   } catch (error) {
-    throw new Error(
+    throw new JulesSessionCreationError(
       "Jules API Session 생성 요청에 실패했습니다.",
-      {
-        cause: error,
-      },
+      "unknown",
+      error,
     );
   } finally {
     clearTimeout(timeout);
@@ -900,30 +1310,42 @@ async function createJulesSession(
         JSON.parse(rawBody) as JulesSessionResponse;
     } catch (error) {
       if (!response.ok) {
-        fail(
+        throw new JulesSessionCreationError(
           `Jules API 요청 실패 HTTP ${response.status}: ${rawBody.slice(0, 2000)}`,
+          "failed",
+          error,
         );
       }
 
-      throw new Error(
+      throw new JulesSessionCreationError(
         "Jules API 성공 응답을 JSON으로 해석할 수 없습니다.",
-        {
-          cause: error,
-        },
+        "unknown",
+        error,
       );
     }
   }
 
   if (!response.ok) {
-    fail(
+    throw new JulesSessionCreationError(
       `Jules API 요청 실패 HTTP ${response.status}: ${getApiErrorMessage(parsed, rawBody)}`,
+      "failed",
     );
   }
 
-  const name = readString(
-    parsed.name,
-    "session.name",
-  );
+  let name: string;
+
+  try {
+    name = readString(
+      parsed.name,
+      "session.name",
+    );
+  } catch (error) {
+    throw new JulesSessionCreationError(
+      "Jules API 응답에서 Session 이름을 확인할 수 없습니다.",
+      "unknown",
+      error,
+    );
+  }
 
   const id =
     typeof parsed.id === "string" &&
@@ -932,8 +1354,9 @@ async function createJulesSession(
       : name.split("/").at(-1) ?? "";
 
   if (id === "") {
-    fail(
+    throw new JulesSessionCreationError(
       "Jules API 응답에서 Session ID를 확인할 수 없습니다.",
+      "unknown",
     );
   }
 
@@ -1082,6 +1505,7 @@ async function main(): Promise<void> {
   let existingSession:
     | ExistingSession
     | null = null;
+  let comments: GitHubComment[] = [];
 
   if (options.issueNumber !== undefined) {
     issue = await getTrackingIssue(
@@ -1096,14 +1520,25 @@ async function main(): Promise<void> {
       options.force,
     );
 
-    const comments =
-      await getIssueComments(
-        options.repository,
-        options.issueNumber,
-      );
+    comments = await getIssueComments(
+      options.repository,
+      options.issueNumber,
+    );
 
     existingSession =
       parseExistingSession(comments);
+
+    if (
+      !options.dryRun &&
+      !options.force &&
+      existingSession === null &&
+      hasBlockingDispatchIntent(comments)
+    ) {
+      fail(
+        "이전 Dispatch Intent가 Session 또는 명시적 해제 없이 남아 있습니다. " +
+          "중복 Jules Session 생성을 막기 위해 자동 Dispatch를 중단합니다.",
+      );
+    }
   }
 
   const sourceName =
@@ -1200,8 +1635,78 @@ async function main(): Promise<void> {
     return;
   }
 
-  const session =
-    await createJulesSession(request);
+  let reservation: RuntimeReservation | null = null;
+
+  if (
+    issue !== null &&
+    options.issueNumber !== undefined
+  ) {
+    reservation = await ensureReservation(
+      options.repository,
+      task,
+      options.issueNumber,
+      comments,
+    );
+
+    await recordDispatchIntent(
+      options.repository,
+      task,
+      options.issueNumber,
+      reservation,
+    );
+  }
+
+  let session: ExistingSession;
+
+  try {
+    session =
+      await createJulesSession(request);
+  } catch (error) {
+    if (
+      reservation !== null &&
+      options.issueNumber !== undefined
+    ) {
+      const outcome =
+        error instanceof JulesSessionCreationError &&
+        error.outcome === "failed"
+          ? "released"
+          : "invalidated";
+
+      const reason =
+        error instanceof Error
+          ? error.message
+          : String(error);
+
+      await recordQuotaOutcome(
+        options.repository,
+        task,
+        options.issueNumber,
+        reservation,
+        {
+          status: outcome,
+          reason: reason.slice(0, 500),
+        },
+      );
+    }
+
+    throw error;
+  }
+
+  if (
+    reservation !== null &&
+    options.issueNumber !== undefined
+  ) {
+    await recordQuotaOutcome(
+      options.repository,
+      task,
+      options.issueNumber,
+      reservation,
+      {
+        status: "committed",
+        session,
+      },
+    );
+  }
 
   const result =
     createResult(

@@ -22,6 +22,18 @@ const ACTIVE_LABELS = new Set([
   "state:deploying",
 ]);
 
+const QUOTA_LEDGER_MARKER =
+  "<!-- juleswhile:quota-ledger -->";
+
+const DISPATCH_MARKER =
+  "<!-- juleswhile:task-dispatch -->";
+
+const DISPATCH_INTENT_MARKER =
+  "<!-- juleswhile:dispatch-intent -->";
+
+const DISPATCH_OUTCOME_MARKER =
+  "<!-- juleswhile:dispatch-outcome -->";
+
 interface CliOptions {
   responseFile: string;
   staleDispatchingMinutes: number;
@@ -61,6 +73,11 @@ interface GitHubPullRequest {
   merged: boolean;
   merged_at: string | null;
   html_url: string;
+}
+
+interface RuntimeReservation {
+  key: string;
+  category: "new" | "correction" | "maintenance";
 }
 
 interface ReconcileAction {
@@ -532,7 +549,214 @@ function correctionAttempts(
       (comment.body ?? "").includes(
         "<!-- juleswhile:correction-attempt -->",
       ),
-  ).length;
+    ).length;
+}
+
+function formatUtcDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function parseLedgerField(
+  body: string,
+  field: string,
+): string {
+  const match = body.match(
+    new RegExp(`^${field}:\\s*(.+)$`, "im"),
+  );
+
+  return match?.[1]?.trim() ?? "";
+}
+
+function latestMarkerAt(
+  comments: GitHubComment[],
+  marker: string,
+): number {
+  return Math.max(
+    0,
+    ...comments
+      .filter((comment) =>
+        (comment.body ?? "").includes(marker),
+      )
+      .map((comment) =>
+        Date.parse(comment.created_at),
+      )
+      .filter(Number.isFinite),
+  );
+}
+
+function latestResolvedDispatchOutcomeAt(
+  comments: GitHubComment[],
+): number {
+  return Math.max(
+    0,
+    ...comments
+      .filter((comment) =>
+        (comment.body ?? "").includes(DISPATCH_OUTCOME_MARKER),
+      )
+      .filter((comment) => {
+        const status = parseLedgerField(
+          comment.body ?? "",
+          "status",
+        );
+
+        return [
+          "released",
+          "failed",
+          "reconciled",
+        ].includes(status);
+      })
+      .map((comment) =>
+        Date.parse(comment.created_at),
+      )
+      .filter(Number.isFinite),
+  );
+}
+
+function hasUnresolvedDispatchIntent(
+  comments: GitHubComment[],
+): boolean {
+  const latestIntentAt = latestMarkerAt(
+    comments,
+    DISPATCH_INTENT_MARKER,
+  );
+
+  if (latestIntentAt === 0) {
+    return false;
+  }
+
+  return (
+    latestIntentAt >
+      latestMarkerAt(comments, DISPATCH_MARKER) &&
+    latestIntentAt >
+      latestResolvedDispatchOutcomeAt(comments)
+  );
+}
+
+function latestActiveReservation(
+  taskId: string,
+  issueNumber: number,
+  comments: GitHubComment[],
+): RuntimeReservation | null {
+  const events = comments
+    .map((comment) => {
+      const body = comment.body ?? "";
+
+      if (!body.includes(QUOTA_LEDGER_MARKER)) {
+        return null;
+      }
+
+      const parsedTaskId =
+        parseLedgerField(body, "task_id").toUpperCase();
+      const parsedIssueNumber = Number(
+        parseLedgerField(body, "issue_number"),
+      );
+      const key =
+        parseLedgerField(body, "reservation_key");
+      const status =
+        parseLedgerField(body, "status");
+      const category =
+        parseLedgerField(body, "category");
+
+      if (
+        parsedTaskId !== taskId ||
+        parsedIssueNumber !== issueNumber ||
+        key === "" ||
+        !["new", "correction", "maintenance"].includes(category)
+      ) {
+        return null;
+      }
+
+      return {
+        key,
+        status,
+        category:
+          category as RuntimeReservation["category"],
+        createdAt:
+          comment.created_at,
+      };
+    })
+    .filter((event): event is {
+      key: string;
+      status: string;
+      category: RuntimeReservation["category"];
+      createdAt: string;
+    } => event !== null)
+    .sort(
+      (left, right) =>
+        Date.parse(left.createdAt) -
+        Date.parse(right.createdAt),
+    );
+
+  const latestByKey =
+    new Map<string, (typeof events)[number]>();
+
+  for (const event of events) {
+    latestByKey.set(event.key, event);
+  }
+
+  const active = [...latestByKey.values()]
+    .filter((event) =>
+      ["reserved", "committed"].includes(
+        event.status,
+      ),
+    )
+    .sort(
+      (left, right) =>
+        Date.parse(right.createdAt) -
+        Date.parse(left.createdAt),
+    );
+
+  const latest = active[0];
+
+  return latest
+    ? {
+        key: latest.key,
+        category: latest.category,
+      }
+    : null;
+}
+
+async function releaseReservation(
+  repository: string,
+  issue: GitHubIssue,
+  taskId: string,
+  reservation: RuntimeReservation,
+  options: CliOptions,
+  reason: string,
+): Promise<void> {
+  const workflowRunUrl =
+    process.env.WORKFLOW_RUN_URL ?? "unknown";
+  const workflowRunId =
+    process.env.GITHUB_RUN_ID ??
+    workflowRunUrl.match(/\/actions\/runs\/([0-9]+)/)?.[1] ??
+    "manual";
+
+  await comment(
+    repository,
+    issue.number,
+    [
+      QUOTA_LEDGER_MARKER,
+      DISPATCH_OUTCOME_MARKER,
+      "",
+      "## Reconciler Dispatch Reservation Release",
+      "",
+      "```yaml",
+      "event: quota-released",
+      "status: released",
+      `date: ${formatUtcDate(new Date())}`,
+      `category: ${reservation.category}`,
+      `task_id: ${taskId}`,
+      `issue_number: ${issue.number}`,
+      `reservation_key: ${reservation.key}`,
+      `workflow_run_id: ${workflowRunId}`,
+      `workflow_run_url: ${workflowRunUrl}`,
+      "dispatch_status: reconciled",
+      `reason: ${reason}`,
+      `created_at: ${new Date().toISOString()}`,
+      "```",
+    ].join("\n"),
+    options,
+  );
 }
 
 async function ensureLabel(
@@ -949,11 +1173,88 @@ async function main(): Promise<void> {
         comments.some(
           (entry) =>
             (entry.body ?? "").includes(
-              "<!-- juleswhile:task-dispatch -->",
+              DISPATCH_MARKER,
             ),
         );
 
       if (!hasSession) {
+        const reservation =
+          latestActiveReservation(
+            taskId,
+            issue.number,
+            comments,
+          );
+
+        if (hasUnresolvedDispatchIntent(comments)) {
+          result.summary.repaired += 1;
+          result.summary.blocked += 1;
+          result.summary.incidents += 1;
+
+          result.actions.push({
+            issueNumber:
+              issue.number,
+            taskId,
+            action:
+              "block-unresolved-dispatch-intent",
+            reason:
+              "Dispatch intent exists without a Session marker or explicit release.",
+            applied:
+              options.apply,
+          });
+
+          await replaceStateLabels(
+            repository,
+            issue,
+            "state:blocked",
+            options,
+          );
+
+          await comment(
+            repository,
+            issue.number,
+            [
+              "<!-- juleswhile:reconciler-dispatch-unknown -->",
+              "",
+              "## Dispatch 결과 확인 필요",
+              "",
+              "Jules Session 생성 의도는 기록됐지만 Session 또는 명시적 해제 기록이 없습니다.",
+              "",
+              "중복 Jules Session 생성을 막기 위해 TASK를 BLOCKED로 전환했습니다.",
+              "",
+              `- Detected at: ${new Date().toISOString()}`,
+            ].join("\n"),
+            options,
+          );
+
+          await createIncident(
+            repository,
+            `Unresolved Dispatch Intent for ${taskId}`,
+            [
+              "# Unresolved Dispatch Intent",
+              "",
+              `- TASK: \`${taskId}\``,
+              `- Issue: #${issue.number}`,
+              "",
+              "A dispatch intent exists without a Jules Session marker or explicit release.",
+              "Verify the Jules API state before retrying this TASK.",
+            ].join("\n"),
+            options,
+          );
+
+          continue;
+        }
+
+        if (reservation) {
+          await releaseReservation(
+            repository,
+            issue,
+            taskId,
+            reservation,
+            options,
+            "stale-dispatching-without-session",
+          );
+        }
+
         result.summary.repaired += 1;
         result.summary.retried += 1;
 
