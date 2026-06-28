@@ -4,6 +4,16 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
+import { parse as parseYaml } from "yaml";
+
+import {
+  JulesApiClient,
+  JulesApiError,
+  type JulesSession,
+} from "./jules-api.js";
+
+const TASK_INDEX_PATH = "ops/tasks/task-index.yaml";
+
 const GITHUB_API_BASE_URL =
   process.env.GITHUB_API_URL ??
   "https://api.github.com";
@@ -33,6 +43,31 @@ const DISPATCH_INTENT_MARKER =
 
 const DISPATCH_OUTCOME_MARKER =
   "<!-- juleswhile:dispatch-outcome -->";
+
+const SESSION_RECONCILIATION_MARKER =
+  "<!-- juleswhile:session-reconciliation -->";
+
+const INCIDENT_MARKER_PREFIX =
+  "<!-- juleswhile:incident:";
+
+const ACTIVE_JULES_STATES = new Set([
+  "QUEUED",
+  "PLANNING",
+  "IN_PROGRESS",
+]);
+
+const HUMAN_INTERVENTION_JULES_STATES = new Set([
+  "AWAITING_PLAN_APPROVAL",
+  "AWAITING_USER_FEEDBACK",
+  "PAUSED",
+]);
+
+const TRANSIENT_API_ERROR_KINDS = new Set([
+  "rate_limited",
+  "server",
+  "timeout",
+  "network",
+]);
 
 interface CliOptions {
   responseFile: string;
@@ -80,6 +115,34 @@ interface RuntimeReservation {
   category: "new" | "correction" | "maintenance";
 }
 
+interface TaskContract {
+  id: string;
+  title: string;
+  retry_policy?: {
+    max_corrections?: number;
+  };
+  metadata?: {
+    issue_number?: number | null;
+  };
+}
+
+interface TaskIndex {
+  tasks: TaskContract[];
+}
+
+interface SessionMarker {
+  name: string;
+  id: string;
+  url: string;
+  state: string;
+  createdAt: string;
+}
+
+interface DispatchIntent {
+  createdAt: string;
+  reservationKey: string;
+}
+
 interface ReconcileAction {
   issueNumber: number;
   taskId: string;
@@ -98,6 +161,10 @@ interface ReconcileResult {
     blocked: number;
     retried: number;
     incidents: number;
+    sessions_checked: number;
+    sessions_recovered: number;
+    api_errors: number;
+    unknown_states: number;
   };
   actions: ReconcileAction[];
   completedAt: string;
@@ -428,9 +495,42 @@ async function listComments(
   repository: string,
   issueNumber: number,
 ): Promise<GitHubComment[]> {
-  return githubRequest<GitHubComment[]>(
-    repository,
-    `/issues/${issueNumber}/comments?per_page=100`,
+  const comments: GitHubComment[] = [];
+
+  for (
+    let page = 1;
+    page <= 100;
+    page += 1
+  ) {
+    const batch =
+      await githubRequest<GitHubComment[]>(
+        repository,
+        `/issues/${issueNumber}/comments?per_page=100&page=${page}`,
+      );
+
+    comments.push(...batch);
+
+    if (batch.length < 100) {
+      break;
+    }
+  }
+
+  return comments;
+}
+
+async function readTaskIndex(): Promise<Map<string, TaskContract>> {
+  const content = await fs.readFile(TASK_INDEX_PATH, "utf8");
+  const parsed = parseYaml(content) as TaskIndex;
+
+  if (!Array.isArray(parsed.tasks)) {
+    fail(`${TASK_INDEX_PATH}에 tasks 배열이 없습니다.`);
+  }
+
+  return new Map(
+    parsed.tasks.map((task) => [
+      task.id,
+      task,
+    ]),
   );
 }
 
@@ -539,6 +639,152 @@ function findPullRequestNumber(
   }
 
   return null;
+}
+
+function parseSessionMarkers(
+  comments: GitHubComment[],
+): SessionMarker[] {
+  return comments
+    .map((comment) => {
+      const body = comment.body ?? "";
+
+      if (!body.includes(DISPATCH_MARKER)) {
+        return null;
+      }
+
+      const yamlName = parseLedgerField(body, "session_name");
+      const yamlId = parseLedgerField(body, "session_id");
+      const yamlUrl = parseLedgerField(body, "session_url");
+      const yamlState = parseLedgerField(body, "state");
+      const tableName =
+        body.match(/\|\s*Session\s*\|\s*`([^`]+)`\s*\|/i)?.[1] ??
+        "";
+      const tableId =
+        body.match(/\|\s*Session ID\s*\|\s*`([^`]+)`\s*\|/i)?.[1] ??
+        "";
+      const tableState =
+        body.match(/\|\s*Session 상태\s*\|\s*`([^`]+)`\s*\|/i)?.[1] ??
+        "";
+      const markdownUrl =
+        body.match(/\[Jules Session 열기\]\(([^)]+)\)/i)?.[1] ??
+        "";
+
+      const name = yamlName || tableName;
+      const id =
+        yamlId ||
+        tableId ||
+        name.split("/").at(-1) ||
+        "";
+
+      if (name === "" && id === "") {
+        return null;
+      }
+
+      return {
+        name,
+        id,
+        url: yamlUrl || markdownUrl,
+        state: yamlState || tableState || "UNKNOWN",
+        createdAt: comment.created_at,
+      };
+    })
+    .filter(
+      (marker): marker is SessionMarker =>
+        marker !== null,
+    )
+    .sort(
+      (left, right) =>
+        Date.parse(right.createdAt) -
+        Date.parse(left.createdAt),
+    );
+}
+
+function latestDispatchIntent(
+  comments: GitHubComment[],
+): DispatchIntent | null {
+  const intents = comments
+    .map((comment) => {
+      const body = comment.body ?? "";
+
+      if (!body.includes(DISPATCH_INTENT_MARKER)) {
+        return null;
+      }
+
+      return {
+        createdAt: comment.created_at,
+        reservationKey:
+          parseLedgerField(body, "reservation_key"),
+      };
+    })
+    .filter(
+      (intent): intent is DispatchIntent =>
+        intent !== null,
+    )
+    .sort(
+      (left, right) =>
+        Date.parse(right.createdAt) -
+        Date.parse(left.createdAt),
+    );
+
+  return intents[0] ?? null;
+}
+
+function extractPullRequestUrls(
+  session: JulesSession,
+): string[] {
+  return session.outputs
+    .map((output) => output.pullRequest?.url ?? "")
+    .filter((url) => url !== "");
+}
+
+function pullRequestNumberFromUrl(
+  repository: string,
+  url: string,
+): number | null {
+  const [owner, repo] = repository.split("/");
+  const escapedOwner = owner.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedRepo = repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = url.match(
+    new RegExp(
+      `^https://github\\.com/${escapedOwner}/${escapedRepo}/pull/([0-9]+)(?:[#?].*)?$`,
+      "i",
+    ),
+  );
+
+  return match ? Number(match[1]) : null;
+}
+
+function sessionTitle(taskId: string, task: TaskContract | undefined): string {
+  return `[${taskId}] ${task?.title ?? ""}`.trim();
+}
+
+function sessionMatchesRepository(
+  session: JulesSession,
+  repository: string,
+): boolean {
+  return (
+    session.sourceContextRepository === "" ||
+    session.sourceContextRepository === repository ||
+    session.sourceContextRepository === `github/${repository}` ||
+    session.sourceContextRepository === `sources/github/${repository}`
+  );
+}
+
+function incidentMarker(key: string): string {
+  return `${INCIDENT_MARKER_PREFIX}${key} -->`;
+}
+
+function hasCommentMarker(
+  comments: GitHubComment[],
+  marker: string,
+): boolean {
+  return comments.some((comment) =>
+    (comment.body ?? "").includes(marker),
+  );
+}
+
+function shouldPreserveStateOnApiError(error: JulesApiError): boolean {
+  return TRANSIENT_API_ERROR_KINDS.has(error.kind);
 }
 
 function correctionAttempts(
@@ -903,6 +1149,47 @@ async function createIncident(
   );
 }
 
+async function createIncidentOnce(
+  repository: string,
+  issueNumber: number,
+  title: string,
+  markerKey: string,
+  issueCommentBody: string,
+  body: string,
+  comments: GitHubComment[],
+  options: CliOptions,
+): Promise<boolean> {
+  const marker = incidentMarker(markerKey);
+
+  if (hasCommentMarker(comments, marker)) {
+    return false;
+  }
+
+  await comment(
+    repository,
+    issueNumber,
+    [
+      marker,
+      "",
+      issueCommentBody,
+    ].join("\n"),
+    options,
+  );
+
+  await createIncident(
+    repository,
+    title,
+    [
+      marker,
+      "",
+      body,
+    ].join("\n"),
+    options,
+  );
+
+  return true;
+}
+
 async function ensureLabels(
   repository: string,
   options: CliOptions,
@@ -926,6 +1213,16 @@ async function ensureLabels(
       "state:blocked",
       "D73A4A",
       "TASK requires intervention",
+    ],
+    [
+      "state:running",
+      "1D76DB",
+      "TASK has an active Jules Session",
+    ],
+    [
+      "state:pr-opened",
+      "5319E7",
+      "TASK produced a Pull Request",
     ],
     [
       "state:completed",
@@ -990,6 +1287,515 @@ async function writeJsonAtomic(
   );
 }
 
+async function getPullRequest(
+  repository: string,
+  pullRequestNumber: number,
+): Promise<GitHubPullRequest> {
+  return githubRequest<GitHubPullRequest>(
+    repository,
+    `/pulls/${pullRequestNumber}`,
+  );
+}
+
+async function recordSessionReconciliation(
+  repository: string,
+  issue: GitHubIssue,
+  taskId: string,
+  session: JulesSession,
+  action: string,
+  reason: string,
+  options: CliOptions,
+  pullRequestNumber?: number,
+): Promise<void> {
+  await comment(
+    repository,
+    issue.number,
+    [
+      SESSION_RECONCILIATION_MARKER,
+      "",
+      "## Jules Session Reconciliation",
+      "",
+      "```yaml",
+      `task_id: ${taskId}`,
+      `session_name: ${session.name}`,
+      `session_id: ${session.id}`,
+      `session_state: ${session.state}`,
+      `session_url: ${session.url}`,
+      `session_update_time: ${session.updateTime}`,
+      `action: ${action}`,
+      `reason: ${reason}`,
+      ...(pullRequestNumber
+        ? [`pull_request: #${pullRequestNumber}`]
+        : []),
+      `created_at: ${new Date().toISOString()}`,
+      "```",
+    ].join("\n"),
+    options,
+  );
+}
+
+async function recoverSessionFromCandidates(
+  julesClient: JulesApiClient,
+  repository: string,
+  taskId: string,
+  task: TaskContract | undefined,
+  intent: DispatchIntent,
+): Promise<
+  | {
+      kind: "none";
+    }
+  | {
+      kind: "ambiguous";
+      count: number;
+    }
+  | {
+      kind: "found";
+      session: JulesSession;
+    }
+> {
+  const expectedTitle = sessionTitle(taskId, task);
+  const createdAfter = Date.parse(intent.createdAt);
+  const { sessions } =
+    await julesClient.listSessions();
+  const candidates = sessions.filter((session) => {
+    const createdAt = Date.parse(session.createTime);
+
+    return (
+      session.title === expectedTitle &&
+      (Number.isNaN(createdAfter) ||
+        Number.isNaN(createdAt) ||
+        createdAt >= createdAfter) &&
+      sessionMatchesRepository(session, repository)
+    );
+  });
+
+  if (candidates.length === 0) {
+    return {
+      kind: "none",
+    };
+  }
+
+  if (candidates.length > 1) {
+    return {
+      kind: "ambiguous",
+      count: candidates.length,
+    };
+  }
+
+  return {
+    kind: "found",
+    session: candidates[0],
+  };
+}
+
+async function reconcileJulesSession(
+  repository: string,
+  issue: GitHubIssue,
+  taskId: string,
+  task: TaskContract | undefined,
+  comments: GitHubComment[],
+  labels: Set<string>,
+  options: CliOptions,
+  julesClient: JulesApiClient,
+  result: ReconcileResult,
+): Promise<boolean> {
+  const sessionMarkers =
+    parseSessionMarkers(comments);
+  let session: JulesSession | null = null;
+
+  if (sessionMarkers.length > 0) {
+    const marker = sessionMarkers[0];
+    result.summary.sessions_checked += 1;
+    session = await julesClient.getSession(
+      marker.name || marker.id,
+    );
+  } else {
+    const intent = latestDispatchIntent(comments);
+
+    if (
+      labels.has("state:dispatching") &&
+      intent !== null &&
+      hasUnresolvedDispatchIntent(comments)
+    ) {
+      const recovery =
+        await recoverSessionFromCandidates(
+          julesClient,
+          repository,
+          taskId,
+          task,
+          intent,
+        );
+
+      result.summary.sessions_checked += 1;
+
+      if (recovery.kind === "found") {
+        result.summary.sessions_recovered += 1;
+        session = recovery.session;
+
+        await comment(
+          repository,
+          issue.number,
+          [
+            SESSION_RECONCILIATION_MARKER,
+            DISPATCH_MARKER,
+            "",
+            "## Jules Session Marker Recovered",
+            "",
+            "```yaml",
+            `task_id: ${taskId}`,
+            `session_name: ${session.name}`,
+            `session_id: ${session.id}`,
+            `session_url: ${session.url}`,
+            `state: ${session.state}`,
+            "recovered_from: dispatch-intent",
+            `created_at: ${new Date().toISOString()}`,
+            "```",
+          ].join("\n"),
+          options,
+        );
+      } else if (recovery.kind === "none") {
+        const reservation =
+          latestActiveReservation(
+            taskId,
+            issue.number,
+            comments,
+          );
+
+        if (reservation) {
+          await releaseReservation(
+            repository,
+            issue,
+            taskId,
+            reservation,
+            options,
+            "dispatch-intent-without-jules-session",
+          );
+        }
+
+        result.summary.repaired += 1;
+        result.summary.retried += 1;
+        result.actions.push({
+          issueNumber: issue.number,
+          taskId,
+          action: "restore-ready-no-session-candidate",
+          reason:
+            "Dispatch intent had no matching Jules Session candidate.",
+          applied: options.apply,
+        });
+
+        await replaceStateLabels(
+          repository,
+          issue,
+          "state:ready",
+          options,
+        );
+
+        return true;
+      } else {
+        result.summary.repaired += 1;
+        result.summary.blocked += 1;
+        result.actions.push({
+          issueNumber: issue.number,
+          taskId,
+          action: "block-ambiguous-session-candidates",
+          reason: `Found ${recovery.count} matching Jules Session candidates.`,
+          applied: options.apply,
+        });
+
+        await replaceStateLabels(
+          repository,
+          issue,
+          "state:blocked",
+          options,
+        );
+
+        if (
+          await createIncidentOnce(
+            repository,
+            issue.number,
+            `Ambiguous Jules Session candidates for ${taskId}`,
+            `${taskId}-ambiguous-session-candidates`,
+            [
+              "## Jules Session 후보 중복",
+              "",
+              `동일 TASK에 대한 Jules Session 후보가 ${recovery.count}개 발견되어 BLOCKED로 전환했습니다.`,
+            ].join("\n"),
+            [
+              "# Ambiguous Jules Session Candidates",
+              "",
+              `- TASK: \`${taskId}\``,
+              `- Issue: #${issue.number}`,
+              `- Candidates: ${recovery.count}`,
+            ].join("\n"),
+            comments,
+            options,
+          )
+        ) {
+          result.summary.incidents += 1;
+        }
+
+        return true;
+      }
+    }
+  }
+
+  if (session === null) {
+    return false;
+  }
+
+  const state = session.state.toUpperCase();
+
+  if (ACTIVE_JULES_STATES.has(state)) {
+    result.actions.push({
+      issueNumber: issue.number,
+      taskId,
+      action: "preserve-running-active-session",
+      reason: `Jules Session is ${state}.`,
+      applied: false,
+    });
+
+    if (!labels.has("state:running")) {
+      result.summary.repaired += 1;
+      await replaceStateLabels(
+        repository,
+        issue,
+        "state:running",
+        options,
+      );
+    }
+
+    await recordSessionReconciliation(
+      repository,
+      issue,
+      taskId,
+      session,
+      "preserve-running",
+      `Jules Session is ${state}.`,
+      options,
+    );
+
+    return true;
+  }
+
+  if (HUMAN_INTERVENTION_JULES_STATES.has(state)) {
+    result.summary.repaired += 1;
+    result.summary.blocked += 1;
+    result.actions.push({
+      issueNumber: issue.number,
+      taskId,
+      action: "block-human-intervention",
+      reason: `Jules Session requires intervention: ${state}.`,
+      applied: options.apply,
+    });
+
+    await replaceStateLabels(
+      repository,
+      issue,
+      "state:blocked",
+      options,
+    );
+
+    const markerKey =
+      `${taskId}-human-intervention-${state.toLowerCase()}`;
+
+    if (
+      await createIncidentOnce(
+        repository,
+        issue.number,
+        `Jules Session requires intervention for ${taskId}`,
+        markerKey,
+        [
+          "## Jules Session 사람 개입 필요",
+          "",
+          `- Session: ${session.url || session.name}`,
+          `- State: \`${state}\``,
+        ].join("\n"),
+        [
+          "# Jules Session Requires Intervention",
+          "",
+          `- TASK: \`${taskId}\``,
+          `- Issue: #${issue.number}`,
+          `- State: \`${state}\``,
+          `- Session: ${session.url || session.name}`,
+        ].join("\n"),
+        comments,
+        options,
+      )
+    ) {
+      result.summary.incidents += 1;
+    }
+
+    return true;
+  }
+
+  if (state === "COMPLETED") {
+    const pullRequestUrl =
+      extractPullRequestUrls(session)[0] ?? "";
+    const pullRequestNumber =
+      pullRequestUrl === ""
+        ? null
+        : pullRequestNumberFromUrl(
+            repository,
+            pullRequestUrl,
+          );
+
+    if (pullRequestNumber === null) {
+      result.summary.repaired += 1;
+      result.summary.blocked += 1;
+      result.actions.push({
+        issueNumber: issue.number,
+        taskId,
+        action: "block-completed-without-pr",
+        reason:
+          "Session completed without traceable PR.",
+        applied: options.apply,
+      });
+
+      await replaceStateLabels(
+        repository,
+        issue,
+        "state:blocked",
+        options,
+      );
+
+      if (
+        await createIncidentOnce(
+          repository,
+          issue.number,
+          `Session completed without traceable PR for ${taskId}`,
+          `${taskId}-completed-without-pr`,
+          [
+            "## Session completed without traceable PR",
+            "",
+            `- Session: ${session.url || session.name}`,
+            `- updateTime: ${session.updateTime}`,
+          ].join("\n"),
+          [
+            "# Session Completed Without Traceable PR",
+            "",
+            `- TASK: \`${taskId}\``,
+            `- Issue: #${issue.number}`,
+            `- Session: ${session.url || session.name}`,
+          ].join("\n"),
+          comments,
+          options,
+        )
+      ) {
+        result.summary.incidents += 1;
+      }
+
+      return true;
+    }
+
+    const pullRequest =
+      await getPullRequest(
+        repository,
+        pullRequestNumber,
+      );
+
+    result.summary.repaired += 1;
+    result.actions.push({
+      issueNumber: issue.number,
+      taskId,
+      action: "move-to-pr-opened",
+      reason: `Jules Session completed with PR #${pullRequest.number}.`,
+      applied: options.apply,
+    });
+
+    await replaceStateLabels(
+      repository,
+      issue,
+      "state:pr-opened",
+      options,
+    );
+
+    await recordSessionReconciliation(
+      repository,
+      issue,
+      taskId,
+      session,
+      "move-to-pr-opened",
+      `Pull Request #${pullRequest.number} is ${pullRequest.state}.`,
+      options,
+      pullRequest.number,
+    );
+
+    return true;
+  }
+
+  if (state === "FAILED") {
+    const attempts =
+      correctionAttempts(comments);
+    const maxCorrections =
+      task?.retry_policy?.max_corrections ??
+      options.maxCorrections;
+    const nextState =
+      attempts < maxCorrections
+        ? "state:retry-wait"
+        : "state:blocked";
+
+    result.summary.repaired += 1;
+    if (nextState === "state:retry-wait") {
+      result.summary.retried += 1;
+    } else {
+      result.summary.blocked += 1;
+    }
+
+    result.actions.push({
+      issueNumber: issue.number,
+      taskId,
+      action:
+        nextState === "state:retry-wait"
+          ? "move-failed-session-to-retry-wait"
+          : "block-failed-session",
+      reason: `Jules Session failed. attempts=${attempts}, max=${maxCorrections}.`,
+      applied: options.apply,
+    });
+
+    await replaceStateLabels(
+      repository,
+      issue,
+      nextState,
+      options,
+    );
+
+    await recordSessionReconciliation(
+      repository,
+      issue,
+      taskId,
+      session,
+      nextState === "state:retry-wait"
+        ? "move-to-retry-wait"
+        : "block",
+      `Jules Session failed at ${session.updateTime}.`,
+      options,
+    );
+
+    return true;
+  }
+
+  result.summary.unknown_states += 1;
+  result.actions.push({
+    issueNumber: issue.number,
+    taskId,
+    action: "preserve-unknown-session-state",
+    reason: `Unknown Jules Session state: ${state}.`,
+    applied: false,
+  });
+
+  await recordSessionReconciliation(
+    repository,
+    issue,
+    taskId,
+    session,
+    "preserve-state",
+    `Unknown Jules Session state: ${state}.`,
+    options,
+  );
+
+  return true;
+}
+
 async function main(): Promise<void> {
   const options =
     parseArguments(
@@ -998,6 +1804,11 @@ async function main(): Promise<void> {
 
   const repository =
     getRepository();
+
+  const taskIndex =
+    await readTaskIndex();
+  const julesClient =
+    new JulesApiClient();
 
   await ensureLabels(
     repository,
@@ -1024,6 +1835,10 @@ async function main(): Promise<void> {
       blocked: 0,
       retried: 0,
       incidents: 0,
+      sessions_checked: 0,
+      sessions_recovered: 0,
+      api_errors: 0,
+      unknown_states: 0,
     },
     actions: [],
     completedAt:
@@ -1161,6 +1976,98 @@ async function main(): Promise<void> {
         repository,
         issue.number,
       );
+
+    const task =
+      taskIndex.get(taskId);
+
+    if (
+      labels.has("state:running") ||
+      labels.has("state:dispatching")
+    ) {
+      try {
+        const handled =
+          await reconcileJulesSession(
+            repository,
+            issue,
+            taskId,
+            task,
+            comments,
+            labels,
+            options,
+            julesClient,
+            result,
+          );
+
+        if (handled) {
+          continue;
+        }
+      } catch (error) {
+        if (error instanceof JulesApiError) {
+          result.summary.api_errors += 1;
+          result.actions.push({
+            issueNumber: issue.number,
+            taskId,
+            action:
+              error.kind === "not_found"
+                ? "block-missing-jules-session"
+                : "preserve-state-api-error",
+            reason:
+              error.kind === "not_found"
+                ? "Jules Session lookup returned 404."
+                : `Jules API lookup failed: ${error.kind}.`,
+            applied:
+              error.kind === "not_found" &&
+              options.apply,
+          });
+
+          if (error.kind === "not_found") {
+            result.summary.repaired += 1;
+            result.summary.blocked += 1;
+
+            await replaceStateLabels(
+              repository,
+              issue,
+              "state:blocked",
+              options,
+            );
+
+            if (
+              await createIncidentOnce(
+                repository,
+                issue.number,
+                `Missing Jules Session for ${taskId}`,
+                `${taskId}-missing-jules-session`,
+                [
+                  "## Jules Session 유실",
+                  "",
+                  "Jules API가 기존 Session marker에 대해 404를 반환했습니다.",
+                  "",
+                  "새 Session은 자동 생성하지 않습니다.",
+                ].join("\n"),
+                [
+                  "# Missing Jules Session",
+                  "",
+                  `- TASK: \`${taskId}\``,
+                  `- Issue: #${issue.number}`,
+                  "- API result: 404",
+                ].join("\n"),
+                comments,
+                options,
+              )
+            ) {
+              result.summary.incidents += 1;
+            }
+          } else if (!shouldPreserveStateOnApiError(error)) {
+            result.summary.unknown_states +=
+              error.kind === "invalid_response" ? 1 : 0;
+          }
+
+          continue;
+        }
+
+        throw error;
+      }
+    }
 
     if (
       labels.has("state:dispatching") &&
@@ -1307,88 +2214,17 @@ async function main(): Promise<void> {
     ) {
       result.summary.stuck += 1;
 
-      const attempts =
-        correctionAttempts(comments);
-
-      if (
-        attempts <
-        options.maxCorrections
-      ) {
-        result.summary.repaired += 1;
-        result.summary.retried += 1;
-
-        result.actions.push({
-          issueNumber:
-            issue.number,
-          taskId,
-          action:
-            "move-to-retry-wait",
-          reason:
-            "Running TASK exceeded the configured stale or session timeout threshold.",
-          applied:
-            options.apply,
-        });
-
-        await replaceStateLabels(
-          repository,
-          issue,
-          "state:retry-wait",
-          options,
-        );
-
-        await comment(
-          repository,
+      result.actions.push({
+        issueNumber:
           issue.number,
-          [
-            "<!-- juleswhile:reconciler-timeout -->",
-            "",
-            "## Jules Session 시간 초과",
-            "",
-            "TASK가 허용된 실행 시간을 초과해 RETRY_WAIT로 전환됐습니다.",
-            "",
-            `- Previous correction attempts: ${attempts}`,
-            `- Maximum corrections: ${options.maxCorrections}`,
-          ].join("\n"),
-          options,
-        );
-      } else {
-        result.summary.repaired += 1;
-        result.summary.blocked += 1;
-
-        result.actions.push({
-          issueNumber:
-            issue.number,
-          taskId,
-          action:
-            "block-after-timeout",
-          reason:
-            "The TASK exceeded the correction or retry limit.",
-          applied:
-            options.apply,
-        });
-
-        await replaceStateLabels(
-          repository,
-          issue,
-          "state:blocked",
-          options,
-        );
-
-        await comment(
-          repository,
-          issue.number,
-          [
-            "<!-- juleswhile:reconciler-blocked -->",
-            "",
-            "## TASK 자동 복구 중단",
-            "",
-            "허용된 보완 횟수를 초과해 TASK를 BLOCKED로 전환했습니다.",
-            "",
-            "사람 또는 Reviewer의 원인 분석이 필요합니다.",
-          ].join("\n"),
-          options,
-        );
-      }
+        taskId,
+        action:
+          "preserve-running-without-api-session",
+        reason:
+          "Running TASK exceeded the stale threshold but no Jules Session marker was available for API verification.",
+        applied:
+          false,
+      });
 
       continue;
     }

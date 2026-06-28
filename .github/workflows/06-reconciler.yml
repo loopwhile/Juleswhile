@@ -121,12 +121,28 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
+      - name: Check Jules API key availability
+        if: steps.input.outputs.should_run == 'true'
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -z "${JULES_API_KEY}" ]]; then
+            echo "::warning::JULES_API_KEY secret is not available to this workflow run."
+          else
+            echo "::notice::JULES_API_KEY secret is available."
+          fi
+
       - name: Reconcile Juleswhile state
         id: reconcile
         if: steps.input.outputs.should_run == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ steps.input.outputs.dry_run }}
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          JULES_API_BASE_URL: ${{ vars.JULES_API_BASE_URL }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -197,6 +213,26 @@ jobs:
               "$RESULT_FILE"
           )"
 
+          SESSIONS_CHECKED="$(
+            jq -r '.summary.sessions_checked // 0' \
+              "$RESULT_FILE"
+          )"
+
+          SESSIONS_RECOVERED="$(
+            jq -r '.summary.sessions_recovered // 0' \
+              "$RESULT_FILE"
+          )"
+
+          API_ERRORS="$(
+            jq -r '.summary.api_errors // 0' \
+              "$RESULT_FILE"
+          )"
+
+          UNKNOWN_STATES="$(
+            jq -r '.summary.unknown_states // 0' \
+              "$RESULT_FILE"
+          )"
+
           echo "should_schedule_next=${SHOULD_SCHEDULE_NEXT}" \
             >> "$GITHUB_OUTPUT"
           echo "scanned=${SCANNED}" >> "$GITHUB_OUTPUT"
@@ -205,6 +241,10 @@ jobs:
           echo "blocked=${BLOCKED}" >> "$GITHUB_OUTPUT"
           echo "retried=${RETRIED}" >> "$GITHUB_OUTPUT"
           echo "incidents=${INCIDENTS}" >> "$GITHUB_OUTPUT"
+          echo "sessions_checked=${SESSIONS_CHECKED}" >> "$GITHUB_OUTPUT"
+          echo "sessions_recovered=${SESSIONS_RECOVERED}" >> "$GITHUB_OUTPUT"
+          echo "api_errors=${API_ERRORS}" >> "$GITHUB_OUTPUT"
+          echo "unknown_states=${UNKNOWN_STATES}" >> "$GITHUB_OUTPUT"
           echo "result_file=${RESULT_FILE}" >> "$GITHUB_OUTPUT"
 
       - name: Trigger next TASK evaluation
@@ -246,6 +286,10 @@ jobs:
           BLOCKED: ${{ steps.reconcile.outputs.blocked }}
           RETRIED: ${{ steps.reconcile.outputs.retried }}
           INCIDENTS: ${{ steps.reconcile.outputs.incidents }}
+          SESSIONS_CHECKED: ${{ steps.reconcile.outputs.sessions_checked }}
+          SESSIONS_RECOVERED: ${{ steps.reconcile.outputs.sessions_recovered }}
+          API_ERRORS: ${{ steps.reconcile.outputs.api_errors }}
+          UNKNOWN_STATES: ${{ steps.reconcile.outputs.unknown_states }}
           SHOULD_SCHEDULE_NEXT: ${{ steps.reconcile.outputs.should_schedule_next }}
         shell: bash
         run: |
@@ -263,6 +307,10 @@ jobs:
             echo "| Retried | \`${RETRIED}\` |"
             echo "| Blocked | \`${BLOCKED}\` |"
             echo "| Incidents | \`${INCIDENTS}\` |"
+            echo "| Sessions checked | \`${SESSIONS_CHECKED}\` |"
+            echo "| Sessions recovered | \`${SESSIONS_RECOVERED}\` |"
+            echo "| API errors | \`${API_ERRORS}\` |"
+            echo "| Unknown states | \`${UNKNOWN_STATES}\` |"
             echo "| Schedule next TASK | \`${SHOULD_SCHEDULE_NEXT}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
