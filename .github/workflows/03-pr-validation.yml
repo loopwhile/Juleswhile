@@ -335,15 +335,9 @@ jobs:
 
           git diff --check "$BASE_SHA" "$HEAD_SHA"
 
-          if git diff \
-            "$BASE_SHA" \
-            "$HEAD_SHA" \
-            | grep -E \
-              '^\+.*(JULES_API_KEY|NETLIFY_AUTH_TOKEN|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)' \
-              > /dev/null; then
-            echo "::error::변경 내용에서 민감정보로 의심되는 패턴을 발견했습니다."
-            exit 1
-          fi
+          npx tsx ops/scripts/verify-repository-integrity.ts \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA"
 
       - name: Write successful validation summary
         env:

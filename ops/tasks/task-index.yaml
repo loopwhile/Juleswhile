@@ -240,9 +240,9 @@ tasks:
   title: Implement quota ledger and dispatch intent idempotency
   role: developer
   type: bug-fix
-  status: READY
+  status: COMPLETED
   priority: P0
-  enabled: true
+  enabled: false
   objective: Harden Juleswhile runtime execution accounting so TASK selection, quota reservation,
     Jules Session creation, and stale dispatch recovery are based on append-only GitHub runtime
     evidence rather than mutable project-state quota counters or post-hoc session comments alone.
@@ -341,10 +341,139 @@ tasks:
     goal_issue_number: 1
     issue_number: 11
     created_at: '2026-06-28T11:57:48Z'
-    updated_at: '2026-06-28T11:57:48Z'
+    updated_at: '2026-06-28T12:13:00Z'
     created_by: project-planner
     tags:
     - control-plane
     - quota
     - dispatch-idempotency
+    - reliability
+- kind: task
+  id: TASK-004
+  title: Reconcile runtime state with Jules API sessions
+  role: developer
+  type: bug-fix
+  status: READY
+  priority: P0
+  enabled: true
+  objective: Change the Reconciler to verify real Jules REST API Session state before recovering
+    runtime TASK state, while preserving TASK-003 quota ledger and dispatch intent evidence.
+  depends_on:
+  - TASK-003
+  inputs:
+  - AGENTS.md
+  - PROJECT_GOAL.md
+  - operator-guide.md
+  - GitHub Issue #14
+  - ops/scripts/reconcile-project.ts
+  - ops/scripts/dispatch-jules.ts
+  - .github/workflows/06-reconciler.yml
+  - ops/tasks/task-index.yaml
+  - ops/state/project-state.json
+  - ops/schemas/task.schema.json
+  - package.json
+  outputs:
+  - ops/scripts/reconcile-project.ts
+  - ops/scripts/jules-api.ts
+  - ops/scripts/jules-api.test.ts
+  - ops/scripts/reconcile-project.test.ts
+  - ops/scripts/verify-repository-integrity.ts
+  - ops/scripts/verify-repository-integrity.test.ts
+  - .github/workflows/03-pr-validation.yml
+  - .github/workflows/06-reconciler.yml
+  - ops/tasks/task-index.yaml
+  - ops/state/project-state.json
+  - package.json
+  acceptance_criteria:
+  - Reconciler queries Jules REST API Sessions with JULES_API_KEY and never logs API keys,
+    request headers, or full prompts.
+  - JULES_API_BASE_URL can override the default base URL for tests.
+  - API client applies request timeout and distinguishes auth, not found, rate limit, server,
+    timeout, network, and invalid response failures.
+  - Existing TASK-003 quota ledger, dispatch intent, dispatch outcome, and task-dispatch markers
+    remain backward compatible.
+  - Issue comments are read with pagination beyond the first 100 comments.
+  - Stale RUNNING TASKs are not moved to RETRY_WAIT without Jules API state evidence.
+  - COMPLETED Sessions with a traceable repository Pull Request are moved to PR tracking state.
+  - COMPLETED Sessions without a traceable Pull Request are BLOCKED with an Incident.
+  - Human-intervention Session states are BLOCKED with idempotent Incident markers.
+  - FAILED Sessions move to RETRY_WAIT or BLOCKED according to correction limits.
+  - Missing, ambiguous, transient API-error, and unknown Session states do not create new Jules
+    Sessions automatically.
+  - Dry-run does not mutate GitHub state and includes API observations in the JSON report.
+  - npm run lint passes.
+  - npm run validate:schemas passes.
+  - npm run validate:task-graph passes.
+  - npm run typecheck passes.
+  - npm test passes.
+  - npm run build passes.
+  - npm run ci passes.
+  - git diff --check passes.
+  allowed_paths:
+  - ops/scripts/reconcile-project.ts
+  - ops/scripts/jules-api.ts
+  - ops/scripts/*.test.ts
+  - ops/scripts/verify-repository-integrity.ts
+  - .github/workflows/03-pr-validation.yml
+  - .github/workflows/06-reconciler.yml
+  - ops/tasks/task-index.yaml
+  - ops/state/project-state.json
+  - package.json
+  forbidden_paths:
+  - .github/workflows/01-goal-intake.yml
+  - .github/workflows/02-dispatch-jules.yml
+  - .github/workflows/04-auto-merge.yml
+  - .github/workflows/05-next-task.yml
+  - .github/workflows/07-content-schedule.yml
+  - .github/workflows/08-netlify-status.yml
+  - .github/ISSUE_TEMPLATE/**
+  - .github/pull_request_template.md
+  - ops/schemas/**
+  - package-lock.json
+  - netlify.toml
+  - src/**
+  - content/**
+  forbidden_actions:
+  - Create a new real Jules Session.
+  - Enable AUTOMATION_ENABLED.
+  - Enable CONTENT_AUTOMATION_ENABLED.
+  - Read or print Secret values.
+  - Change Netlify site configuration.
+  - Bypass Pull Request validation.
+  - Directly push to main.
+  - Delete existing tests or weaken validation gates.
+  validation_commands:
+  - npm run lint
+  - npm run validate:schemas
+  - npm run validate:task-graph
+  - npm run typecheck
+  - npm test
+  - npm run build
+  - npm run ci
+  - git diff --check
+  risk_level: high
+  approval_policy: human
+  parallelizable: false
+  resource_locks:
+  - control-plane
+  - jules-api
+  - reconciler
+  conflicts_with: []
+  retry_policy:
+    max_corrections: 2
+    timeout_minutes: 90
+  stitch:
+    allowed: false
+    required: false
+    expected_outputs: []
+  metadata:
+    goal_issue_number: 1
+    issue_number: 14
+    created_at: '2026-06-28T12:13:00Z'
+    updated_at: '2026-06-28T12:13:00Z'
+    created_by: user
+    tags:
+    - control-plane
+    - jules-api
+    - reconciler
     - reliability
