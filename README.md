@@ -1,44 +1,86 @@
 # Juleswhile
 
-GitHub Issues, Google Jules, GitHub Actions, Stitch MCP, Pull Requests, CI와 Netlify를 결합한 이벤트 드리븐 AI 프로젝트 실행 템플릿이다.
+GitHub Issues, Google Jules, GitHub Actions, Pull Requests, CI와 Netlify를 결합한 **이벤트 드리븐 AI 프로젝트 실행 템플릿**이다.
 
-사용자는 GitHub에 프로젝트 목표를 작성한다. Juleswhile은 목표를 WBS와 검증 가능한 TASK로 분해하고, 실행 가능한 TASK를 Jules Session에 하나씩 전달한다.
+사용자가 GitHub에 프로젝트 목표를 작성하면 Juleswhile은 목표를 검증 가능한 WBS와 TASK로 분해하고, 실행 가능한 TASK를 Google Jules Session에 하나씩 전달한다.
 
-각 TASK 결과는 임시 브랜치와 Pull Request로 제출되며, CI 검증과 병합 정책을 통과한 결과만 `main`에 반영된다. 병합 후에는 다음 TASK가 자동으로 선택되고 Netlify Production 배포 결과까지 추적한다.
+각 TASK 결과는 임시 브랜치와 Pull Request로 제출된다. PR 계약, 스키마, 테스트, 빌드와 병합 정책을 통과한 결과만 `main`에 반영되며, Netlify Production 배포가 확인된 뒤 TASK가 완료된다.
 
 ---
 
-## 현재 상태
+## 현재 검증 상태
+
+Juleswhile Control Plane과 실제 Production 실행 경로는 검증을 완료했다.
 
 ```text
-Control Plane:       구축 완료
-Production E2E:      검증 완료
-Jules Dispatch:      검증 완료
-PR Validation:       검증 완료
-Auto Merge:          검증 완료
-Netlify Production:  검증 완료
-기본 운영 모드:       Guarded Automation
-공급망 검증:          SHA-pinned Actions + Dependabot + SBOM/Hash 절차
+Control Plane                 구축 완료
+Goal → Planner                검증 완료
+TASK Manifest                 검증 완료
+Next TASK Selector            검증 완료
+Jules API Dispatch            검증 완료
+Quota Reservation / Ledger    검증 완료
+Duplicate Session Protection  검증 완료
+PR Validation                 검증 완료
+Custom Auto Merge             검증 완료
+Netlify Production Tracking   검증 완료
+Reconciler                    검증 완료
+Runtime State Projection      검증 완료
+Production E2E Pilot          검증 완료
 ```
 
-검증된 실행 흐름:
+현재 기본 운영 기준:
 
 ```text
-Project Goal Issue
+Core Automation:      true
+Content Automation:   false
+Autonomy Mode:        guarded
+Max Concurrency:      1
+Permanent Branch:     main
+State Authority:      GitHub Issues and Pull Requests
+```
+
+현재 저장소의 구축 검증 TASK는 다음 상태다.
+
+```text
+TASK total:       9
+TASK completed:   9
+TASK ready:       0
+Active Sessions:  0
+Active PRs:       0
+Resource Locks:   0
+```
+
+---
+
+## 검증된 전체 실행 흐름
+
+```text
+[GOAL] Issue
+→ 01 · Goal Intake
 → Planner Jules Session
-→ WBS / TASK Manifest
+→ PROJECT_GOAL.md / WBS / TASK Manifest
 → Planner Pull Request
-→ PR Validation
-→ main 병합
-→ 다음 READY TASK 선택
-→ Jules TASK Session
+→ 03 · PR Validation
+→ 04 · Auto Merge
+→ main
+→ 05 · Next TASK
+→ TASK Issue 생성 또는 동기화
+→ Quota Reservation
+→ Dispatch Intent
+→ 02 · Dispatch Jules TASK
+→ Jules Session
 → TASK Pull Request
-→ CI 검증
-→ 자동 병합
-→ Netlify Production 배포
-→ TASK 완료
-→ 다음 TASK 선택
+→ 03 · PR Validation
+→ 04 · Auto Merge
+→ main
+→ 08 · Netlify Status
+→ Production 검증
+→ TASK Issue COMPLETED
+→ 05 · Next TASK
+→ 다음 READY TASK 반복
 ```
+
+오래되거나 비정상적인 상태는 `06 · Reconciler`가 점검한다.
 
 ---
 
@@ -52,46 +94,125 @@ Project Goal Issue
 
 영구 브랜치는 `main` 하나만 사용한다.
 
-Jules는 TASK별 임시 브랜치를 만들고 Pull Request로 결과를 제출한다.
+Jules와 운영자는 TASK별 임시 브랜치에서 작업하고 Pull Request로 결과를 제출한다.
 
 ### Pull Request Only
 
-Jules가 생성한 결과는 `main`에 직접 Push하지 않는다.
+정상 운영이 시작된 이후에는 검증되지 않은 결과를 `main`에 직접 Push하지 않는다.
 
 ### GitHub Is the Control Plane
 
-GitHub Issues, Pull Requests, Actions와 Manifest가 프로젝트 상태의 기준이다.
+다음 항목이 프로젝트 제어 평면을 구성한다.
+
+* GitHub Goal Issue
+* GitHub TASK Issue
+* Pull Request
+* GitHub Actions
+* TASK Manifest
+* Runtime State Projection
+* Quota Ledger
+* Canonical Session Evidence
 
 ### Jules Is the Worker
 
-Jules는 TASK를 실행하지만 다음 TASK를 임의로 결정하지 않는다.
+Jules는 할당된 TASK를 수행한다.
+
+Jules가 다음 TASK, 프로젝트 전체 상태, 병합 여부를 임의로 결정하지 않는다.
 
 ### CI Is the Quality Gate
 
-AI가 완료했다고 주장하는 것과 검증된 완료를 구분한다.
+AI가 작업을 완료했다고 주장하는 것과 검증된 완료를 구분한다.
+
+### Production Is the Completion Gate
+
+PR 병합만으로 TASK를 완료하지 않는다.
+
+Netlify Production 배포가 확인된 뒤 TASK Issue를 `state:completed`로 전환한다.
 
 ### Guarded Autonomy
 
-낮은 위험의 일반 TASK는 자동 진행할 수 있지만 다음 작업은 사람 승인을 요구할 수 있다.
+낮은 위험의 TASK는 자동 실행할 수 있지만 다음 작업은 사람 승인을 요구할 수 있다.
 
-* 인증·인가
+* 인증·인가 정책
 * 결제 및 환불
-* 사용자 데이터 삭제
+* 개인정보와 사용자 데이터 삭제
 * 파괴적 데이터베이스 변경
-* Secrets 변경
-* 도메인 및 운영 인프라 변경
+* Secret과 Credential 변경
+* 도메인과 운영 인프라 변경
 * 유료 자원 생성
+* 보안 정책 변경
 * 법률·의료·금융 결과 확정
+
+---
+
+## 상태 권위와 파일의 역할
+
+### GitHub Issues와 Pull Requests
+
+실제 Runtime 상태의 권위다.
+
+예:
+
+* TASK가 실행 중인지
+* PR이 열려 있는지
+* Production 배포가 완료됐는지
+* TASK가 완료됐는지
+* Canonical Jules Session이 존재하는지
+
+### `ops/tasks/task-index.yaml`
+
+TASK 계약과 의존성 그래프의 committed Manifest다.
+
+### `ops/state/project-state.json`
+
+GitHub Runtime 증거를 기반으로 생성한 committed Projection이다.
+
+### `PROJECT_GOAL.md`
+
+현재 프로젝트 목표의 committed snapshot이다.
+
+새 프로젝트를 시작하기 전에는 템플릿이며, Goal Issue와 Planner PR을 통해 실제 프로젝트 내용으로 교체한다.
+
+---
+
+## 저장소 구조
+
+```text
+.
+├── .github/
+│   ├── ISSUE_TEMPLATE/
+│   │   └── project-goal.yml
+│   └── workflows/
+│       ├── 01-goal-intake.yml
+│       ├── 02-dispatch-jules.yml
+│       ├── 03-pr-validation.yml
+│       ├── 04-auto-merge.yml
+│       ├── 05-next-task.yml
+│       ├── 06-reconciler.yml
+│       ├── 07-content-schedule.yml
+│       ├── 08-netlify-status.yml
+│       └── 09-main-integrity-audit.yml
+├── docs/
+├── ops/
+│   ├── roles/
+│   ├── schemas/
+│   ├── scripts/
+│   ├── state/
+│   │   └── project-state.json
+│   └── tasks/
+│       └── task-index.yaml
+├── AGENTS.md
+├── PROJECT_GOAL.md
+├── README.md
+├── operator-guide.md
+└── package.json
+```
 
 ---
 
 ## 새 프로젝트 빠른 시작
 
-전체 설명은 [`operator-guide.md`](operator-guide.md)를 따른다.
-
-운영 보안과 공급망 검증 절차는
-[`docs/07_operations/operational-hardening.md`](docs/07_operations/operational-hardening.md)와
-[`docs/07_operations/security-capability-matrix.md`](docs/07_operations/security-capability-matrix.md)를 따른다.
+전체 절차는 [`operator-guide.md`](operator-guide.md)를 따른다.
 
 ### 1. 환경값 결정
 
@@ -107,40 +228,53 @@ export GITHUB_REPO="my-project"
 export REPOSITORY="${GITHUB_OWNER}/${GITHUB_REPO}"
 ```
 
-`PROJECT_ID`는 소문자 영문, 숫자, 하이픈을 사용하는 것을 권장한다.
+권장 규칙:
 
-### 2. Juleswhile 복제 후 Git 이력 제거
+```text
+PROJECT_ID:   소문자 영문, 숫자, 하이픈
+PROJECT_DIR:  로컬 디렉터리 이름
+PROJECT_NAME: 사람이 읽는 프로젝트 이름
+REPOSITORY:   OWNER/REPOSITORY
+```
+
+### 2. 템플릿 복제
 
 ```bash
 git clone "$TEMPLATE_REPO" "$PROJECT_DIR"
 cd "$PROJECT_DIR"
+```
 
+### 3. 기존 Git 이력 제거
+
+```bash
 rm -rf .git
 
 git init
 git branch -M main
 ```
 
-### 3. Template Smoke Test 상태 초기화
+### 4. Bootstrap 초기화
 
 Juleswhile 원본 저장소에는 Production E2E 검증 기록이 포함되어 있다.
 
 새 프로젝트에서는 다음 항목을 초기화해야 한다.
 
-* 기존 TASK-001, TASK-002
-* Smoke Test 문서
-* Project State
-* Runtime State
-* 사용량 기록
+* Juleswhile 구축 검증 TASK
+* 기존 Goal 연결
+* Runtime Session
+* Pull Request Projection
+* Resource Lock
+* Quota 사용량
+* Production Pilot 보고서
+* Repository 이름
 * Jules Source
-* Goal Issue 연결
-* 기존 프로젝트 이름
+* Package 이름
 
-정확한 초기화 명령은 운영자 가이드의 `새 프로젝트 Bootstrap 초기화` 절을 사용한다.
+정확한 초기화 명령은 [`operator-guide.md`](operator-guide.md)의 **Bootstrap 초기화** 절을 사용한다.
 
-### 4. 새 GitHub 저장소 생성 및 연결
+### 5. 새 GitHub 저장소 연결
 
-GitHub에 README나 `.gitignore`를 자동 생성하지 않은 빈 저장소를 만든다.
+GitHub에서 README나 `.gitignore`를 자동 생성하지 않은 빈 저장소를 만든다.
 
 ```bash
 gh repo create "$REPOSITORY" \
@@ -157,14 +291,15 @@ git commit -m "chore: initialize project from Juleswhile"
 git push -u origin main
 ```
 
-### 5. Jules 연결
+초기 Bootstrap Push 이후부터는 Pull Request 흐름을 사용한다.
 
-1. Jules 웹 앱을 연다.
-2. GitHub App을 설치하거나 기존 설치 범위를 수정한다.
-3. 새 GitHub 저장소를 Jules 접근 대상에 추가한다.
-4. Jules에서 새 저장소가 선택되는지 확인한다.
-5. Jules Settings에서 API Key를 생성한다.
-6. Jules Sources API에서 저장소의 정확한 Source 이름을 확인한다.
+### 6. Jules 연결
+
+1. Jules 웹 앱에서 GitHub를 연결한다.
+2. Jules GitHub App의 Repository Access에 새 저장소를 추가한다.
+3. Jules API Key를 생성한다.
+4. Jules Sources API에서 정확한 Source 이름을 확인한다.
+5. Source가 새 저장소를 가리키는지 확인한다.
 
 Source 이름 예시:
 
@@ -172,9 +307,9 @@ Source 이름 예시:
 sources/github/OWNER/REPOSITORY
 ```
 
-표시는 계정이나 API 버전에 따라 달라질 수 있으므로 반환된 값을 그대로 사용한다.
+Source 이름을 추측하지 말고 API가 반환한 값을 그대로 사용한다.
 
-### 6. GitHub Secret 등록
+### 7. GitHub Secrets
 
 필수:
 
@@ -183,7 +318,7 @@ gh secret set JULES_API_KEY \
   --repo "$REPOSITORY"
 ```
 
-Netlify 상태 추적 사용 시:
+Netlify Production 상태 확인 사용 시:
 
 ```bash
 gh secret set NETLIFY_AUTH_TOKEN \
@@ -193,20 +328,36 @@ gh secret set NETLIFY_SITE_ID \
   --repo "$REPOSITORY"
 ```
 
-Secret 값은 저장소 파일, Issue, Pull Request, 댓글에 작성하지 않는다.
+Secret 값은 다음 위치에 작성하지 않는다.
 
-### 7. Repository Variable 등록
+* 저장소 파일
+* Issue
+* Pull Request
+* 댓글
+* Workflow 입력
+* Workflow 로그
+* 채팅 메시지
 
-처음에는 자동화를 비활성화한다.
+### 8. Repository Variables
+
+초기에는 자동화를 비활성화한다.
 
 ```bash
 gh variable set JULES_SOURCE_NAME \
   --repo "$REPOSITORY" \
   --body "sources/github/OWNER/REPOSITORY"
 
+gh variable set AUTOMATION_ENABLED \
+  --repo "$REPOSITORY" \
+  --body "false"
+
+gh variable set CONTENT_AUTOMATION_ENABLED \
+  --repo "$REPOSITORY" \
+  --body "false"
+
 gh variable set JULES_MAX_CONCURRENCY \
   --repo "$REPOSITORY" \
-  --body "10"
+  --body "1"
 
 gh variable set JULES_DAILY_NEW_TASK_BUDGET \
   --repo "$REPOSITORY" \
@@ -224,22 +375,6 @@ gh variable set JULES_DAILY_RESERVE \
   --repo "$REPOSITORY" \
   --body "5"
 
-gh variable set AUTOMATION_ENABLED \
-  --repo "$REPOSITORY" \
-  --body "false"
-
-gh variable set CONTENT_AUTOMATION_ENABLED \
-  --repo "$REPOSITORY" \
-  --body "false"
-
-gh variable set NETLIFY_STATUS_ENABLED \
-  --repo "$REPOSITORY" \
-  --body "true"
-
-gh variable set NETLIFY_PRODUCTION_BRANCH \
-  --repo "$REPOSITORY" \
-  --body "main"
-
 gh variable set PR_MERGE_METHOD \
   --repo "$REPOSITORY" \
   --body "squash"
@@ -249,9 +384,29 @@ gh variable set ALLOW_FORK_PRS \
   --body "false"
 ```
 
-### 8. Netlify 연결
+초기 운영은 반드시 동시 실행량 `1`로 시작한다.
 
-Netlify에서 새 프로젝트를 생성하고 GitHub 저장소를 연결한다.
+여러 번의 Production Pilot과 Reconciler 검증을 통과한 뒤에만 동시 실행량을 높인다.
+
+Variable 확인:
+
+```bash
+gh variable list \
+  --repo "$REPOSITORY"
+```
+
+REST API로 값 확인:
+
+```bash
+gh api \
+  "repos/${REPOSITORY}/actions/variables?per_page=100" |
+  jq '.variables[] | {
+    name,
+    value
+  }'
+```
+
+### 9. Netlify 연결
 
 기본 설정:
 
@@ -261,26 +416,81 @@ Build Command: npm run build
 Publish Directory: dist
 ```
 
-Netlify Site ID와 API Token을 GitHub Secret으로 등록한다.
+Repository Variables:
 
-### 9. 로컬 검증
+```bash
+gh variable set NETLIFY_STATUS_ENABLED \
+  --repo "$REPOSITORY" \
+  --body "true"
+
+gh variable set NETLIFY_PRODUCTION_BRANCH \
+  --repo "$REPOSITORY" \
+  --body "main"
+
+gh variable set NETLIFY_POLL_ATTEMPTS \
+  --repo "$REPOSITORY" \
+  --body "20"
+
+gh variable set NETLIFY_POLL_INTERVAL_SECONDS \
+  --repo "$REPOSITORY" \
+  --body "15"
+```
+
+### 10. 로컬 검증
 
 ```bash
 npm ci
 npm run ci
 ```
 
-다음 항목이 모두 PASS여야 한다.
+다음 항목이 모두 통과해야 한다.
 
 * Biome lint
+* Workflow supply-chain validation
 * JSON Schema validation
 * TASK graph validation
 * TypeScript typecheck
+* Unit tests
 * Production build
 
-### 10. 자동화 활성화
+### 11. Workflow Dry Run
 
-모든 연결과 검증이 완료된 뒤 활성화한다.
+Next TASK:
+
+```bash
+gh workflow run "05-next-task.yml" \
+  --repo "$REPOSITORY" \
+  -f dry_run="true" \
+  -f force="false"
+```
+
+Reconciler:
+
+```bash
+gh workflow run "06-reconciler.yml" \
+  --repo "$REPOSITORY" \
+  -f dry_run="true" \
+  -f force="false"
+```
+
+### 12. Core Automation 활성화
+
+다음 조건을 모두 충족한 뒤 활성화한다.
+
+* GitHub Actions 쓰기 권한 확인
+* Jules API Key 등록
+* Jules Source 검증
+* Netlify 연결 검증
+* `npm run ci` 통과
+* 열린 TASK Session 없음
+* 열린 TASK PR 없음
+* Resource Lock 없음
+* 중복 Session 없음
+* 미해결 Dispatch Intent 없음
+* Content Automation 비활성
+* 최대 동시 실행량 1
+
+먼저 `ops/state/project-state.json`의 committed 상태를 PR로 갱신한 뒤 Repository Variable을 활성화한다.
 
 ```bash
 gh variable set AUTOMATION_ENABLED \
@@ -288,7 +498,7 @@ gh variable set AUTOMATION_ENABLED \
   --body "true"
 ```
 
-정기 콘텐츠 TASK도 실행할 때만 다음 값을 활성화한다.
+Content Automation은 반복 콘텐츠 템플릿을 실제로 사용할 때만 활성화한다.
 
 ```bash
 gh variable set CONTENT_AUTOMATION_ENABLED \
@@ -296,17 +506,25 @@ gh variable set CONTENT_AUTOMATION_ENABLED \
   --body "true"
 ```
 
-### 11. Project Goal Issue 생성
+사용하지 않을 때는 반드시 `false`를 유지한다.
 
-GitHub 저장소의 `Issues`에서 `New issue`를 선택하고 `Project Goal` 템플릿을 사용한다.
+### 13. Project Goal Issue 생성
 
-제목은 반드시 다음 형식으로 시작한다.
+GitHub에서 다음 Issue Form을 선택한다.
 
 ```text
-[GOAL] 프로젝트 목표 제목
+Issues
+→ New issue
+→ Project Goal
 ```
 
-Issue에는 최소한 다음 내용을 구체적으로 작성한다.
+제목 형식:
+
+```text
+[GOAL] 프로젝트 목표
+```
+
+Goal Issue에는 다음을 구체적으로 작성한다.
 
 * 프로젝트 이름
 * 프로젝트 유형
@@ -315,8 +533,8 @@ Issue에는 최소한 다음 내용을 구체적으로 작성한다.
 * 대상 사용자
 * 기대 산출물
 * 핵심 기능
-* 제약사항
-* 데이터 및 정보 출처
+* 기술·비용·일정 제약
+* 정보 출처 정책
 * AI 팀 작업 범위
 * 자동화 수준
 * 게시 및 배포 정책
@@ -326,91 +544,13 @@ Issue에는 최소한 다음 내용을 구체적으로 작성한다.
 * 목표 일정
 * 검증 가능한 성공 조건
 
-Secret, API Key, Token, 비밀번호, 개인정보는 Goal Issue에 작성하지 않는다.
+Secret, Token, 비밀번호와 개인정보는 작성하지 않는다.
 
 ---
 
-## Goal Issue 작성 원칙
+## Pull Request 계약
 
-### 나쁜 목표
-
-```text
-좋은 웹사이트를 만들어 주세요.
-```
-
-문제:
-
-* 완료 조건이 없다.
-* 사용자와 해결 문제가 없다.
-* 기능 범위가 없다.
-* 기술·비용 제약이 없다.
-* 검증 방법이 없다.
-
-### 좋은 목표
-
-```text
-숙박업체가 여러 판매 채널의 객실 재고와 예약을 한 화면에서 관리하는
-반응형 웹서비스 MVP를 구축한다.
-
-대상은 20~100개 소규모 숙박업체다.
-
-최종 결과에는 예약·객실·요금·채널 관리 화면, 운영자 로그인,
-예약 충돌 방지 정책, 오류 감사 로그, 테스트, 운영 문서,
-Netlify 배포 결과가 포함되어야 한다.
-
-결제, 자동 환불, 실제 OTA API 연동은 이번 범위에서 제외한다.
-
-모든 TypeScript typecheck, unit test, production build와
-모바일 화면 검증이 통과해야 완료로 판단한다.
-```
-
----
-
-## 자동 실행 루프
-
-`AUTOMATION_ENABLED=true`이면 다음 체인이 동작한다.
-
-```text
-[GOAL] Issue Open
-→ 01 · Goal Intake
-→ Planner Session 생성
-→ Planner PR 생성
-→ 03 · PR Validation
-→ 04 · Auto Merge
-→ pr_merged event
-→ 05 · Next TASK
-→ TASK Issue 생성 또는 동기화
-→ 02 · Dispatch Jules TASK
-→ Jules Session 생성
-→ Jules PR 생성
-→ 03 · PR Validation
-→ 04 · Auto Merge
-→ 다음 TASK 반복
-```
-
-실행 가능한 READY TASK가 없거나 다음 조건이 발생하면 루프는 멈춘다.
-
-* TASK 의존성 미충족
-* Jules 사용량 예산 초과
-* 동시 실행 상한 초과
-* Resource Lock 충돌
-* CI 실패
-* PR 계약 누락
-* Draft PR
-* 사람 승인 필요
-* Merge Conflict
-* BLOCKED TASK
-* 자동화 비활성화
-
----
-
-## 현재 자동화 경계
-
-Juleswhile은 무제한 무감독 실행 시스템이 아니다.
-
-현재 Jules가 Draft Pull Request를 만들거나 PR 본문 계약을 누락하면 사람이 확인해야 한다.
-
-PR 본문에는 다음 값이 필요하다.
+TASK PR 본문:
 
 ```markdown
 <!-- juleswhile:task-pr -->
@@ -418,7 +558,7 @@ PR 본문에는 다음 값이 필요하다.
 TASK Issue: #123
 ```
 
-Planner PR은 다음 참조가 필요하다.
+Planner PR 본문:
 
 ```markdown
 <!-- juleswhile:task-pr -->
@@ -426,33 +566,36 @@ Planner PR은 다음 참조가 필요하다.
 Goal Issue: #1
 ```
 
-Draft PR은 다음 명령으로 Ready 상태로 전환할 수 있다.
+Draft PR은 검증되지 않는다.
+
+계약을 확인한 뒤 Ready로 전환한다.
 
 ```bash
 gh pr ready <PR_NUMBER> \
   --repo "$REPOSITORY"
 ```
 
-PR 계약이 올바르고 Draft가 아니면 검증, 병합, 다음 TASK 실행은 자동으로 이어진다.
-
 ---
 
 ## Workflow 목록
 
-| Workflow                   | 역할                                  |
-| -------------------------- | ----------------------------------- |
-| `01 · Goal Intake`         | Goal Issue를 검증하고 Planner Session 생성 |
-| `02 · Dispatch Jules TASK` | TASK 하나를 Jules Session 하나에 전달       |
-| `03 · PR Validation`       | PR 계약, 스키마, TASK 범위, 테스트, 빌드 검증     |
-| `04 · Auto Merge`          | 병합 정책 평가, 병합, Issue 완료, 다음 TASK 이벤트 |
-| `05 · Next TASK`           | 실행 가능한 다음 READY TASK 선택             |
-| `06 · Reconciler`          | 고착, 실패, 오래된 상태 복구                   |
-| `07 · Content Schedule`    | 승인된 반복 콘텐츠 TASK 생성                  |
-| `08 · Netlify Status`      | `main` 병합 결과의 Production 배포 확인      |
+| Workflow                    | 역할                                  |
+| --------------------------- | ----------------------------------- |
+| `01 · Goal Intake`          | Goal Issue를 검증하고 Planner Session 생성 |
+| `02 · Dispatch Jules TASK`  | TASK 하나를 Jules Session 하나에 전달       |
+| `03 · PR Validation`        | PR 계약, 스키마, 범위, 테스트와 빌드 검증          |
+| `04 · Auto Merge`           | 병합 정책 평가와 exact-head 병합             |
+| `05 · Next TASK`            | 다음 READY TASK 선택과 예약                |
+| `06 · Reconciler`           | 고착 상태, Session 상태와 Projection 복구    |
+| `07 · Content Schedule`     | 승인된 반복 콘텐츠 TASK 생성                  |
+| `08 · Netlify Status`       | Production Deploy 상태 확인과 TASK 완료    |
+| `09 · Main Integrity Audit` | `main` Push와 PR 병합 경로 감사            |
 
 ---
 
 ## 자동화 중지
+
+Core Automation 중지:
 
 ```bash
 gh variable set AUTOMATION_ENABLED \
@@ -460,11 +603,7 @@ gh variable set AUTOMATION_ENABLED \
   --body "false"
 ```
 
-이 설정은 새로운 Goal 자동 Intake와 다음 TASK 선택을 중지한다.
-
-이미 실행 중인 Jules Session이나 열린 PR은 별도로 확인해야 한다.
-
-콘텐츠 자동화만 중지:
+Content Automation 중지:
 
 ```bash
 gh variable set CONTENT_AUTOMATION_ENABLED \
@@ -472,11 +611,17 @@ gh variable set CONTENT_AUTOMATION_ENABLED \
   --body "false"
 ```
 
+주의:
+
+* 이미 실행 중인 Jules Session은 계속 작업할 수 있다.
+* 열린 PR의 Validation과 Auto Merge는 별도로 진행될 수 있다.
+* 완전 중지가 필요하면 열린 PR에 `do-not-merge`를 적용한다.
+
 ---
 
 ## 상태 확인
 
-### 최근 Workflow
+최근 Workflow:
 
 ```bash
 gh run list \
@@ -484,7 +629,7 @@ gh run list \
   --limit 20
 ```
 
-### 열린 TASK
+열린 TASK:
 
 ```bash
 gh issue list \
@@ -493,7 +638,16 @@ gh issue list \
   --state open
 ```
 
-### 열린 PR
+실행 중 TASK:
+
+```bash
+gh issue list \
+  --repo "$REPOSITORY" \
+  --label "state:running" \
+  --state open
+```
+
+열린 PR:
 
 ```bash
 gh pr list \
@@ -501,54 +655,36 @@ gh pr list \
   --state open
 ```
 
-### 자동화 설정
+Variables:
 
 ```bash
 gh variable list \
   --repo "$REPOSITORY"
 ```
 
-### Secret 이름 확인
+Secret 이름:
 
 ```bash
 gh secret list \
   --repo "$REPOSITORY"
 ```
 
-Secret 값은 다시 표시되지 않는 것이 정상이다.
-
 ---
 
-## 상세 문서
+## Unknown Dispatch Outcome 원칙
 
-* [`operator-guide.md`](operator-guide.md)
+Jules Session 생성 중 timeout, connection reset, HTTP 408, HTTP 425 또는 HTTP 5xx가 발생하면 같은 TASK를 즉시 다시 Dispatch하지 않는다.
 
-  * 새 프로젝트 초기화
-  * GitHub 연결
-  * Jules App, API Key, Source 연결
-  * Netlify 연결
-  * Repository Variables
-  * Goal Issue 작성법
-  * 자동화 활성화
-  * 운영 모니터링
-  * 장애 복구
-  * 중지 및 재개
+다음 순서를 따른다.
 
-* [`AGENTS.md`](AGENTS.md)
+1. Reconciler 실행
+2. Quota Ledger 확인
+3. Dispatch Intent 확인
+4. Canonical Session marker 확인
+5. Jules API Session 조회
+6. 기존 Session이 없다는 사실이 확정된 뒤에만 재시도
 
-  * Jules와 AI Agent의 저장소 작업 규칙
-
-* [`PROJECT_GOAL.md`](PROJECT_GOAL.md)
-
-  * 현재 프로젝트 목표의 committed snapshot
-
-* [`ops/tasks/task-index.yaml`](ops/tasks/task-index.yaml)
-
-  * TASK Manifest와 의존성
-
-* [`ops/state/project-state.json`](ops/state/project-state.json)
-
-  * 프로젝트 상태 snapshot
+Unknown 결과에서는 중복 Session 방지가 우선이다.
 
 ---
 
@@ -557,6 +693,7 @@ Secret 값은 다시 표시되지 않는 것이 정상이다.
 ```bash
 npm ci
 npm run lint
+npm run validate:supply-chain
 npm run validate:schemas
 npm run validate:task-graph
 npm run typecheck
@@ -567,12 +704,53 @@ npm run ci
 
 ---
 
+## 상세 문서
+
+* [`operator-guide.md`](operator-guide.md)
+
+  * 새 프로젝트 Bootstrap
+  * GitHub, Jules와 Netlify 연결
+  * 자동화 활성화
+  * Goal Issue 작성
+  * PR 검증과 병합
+  * 모니터링
+  * Reconciler
+  * 장애 복구
+  * 중지와 재개
+
+* [`AGENTS.md`](AGENTS.md)
+
+  * Jules와 AI Agent의 저장소 작업 규칙
+
+* [`PROJECT_GOAL.md`](PROJECT_GOAL.md)
+
+  * 새 프로젝트 Goal snapshot 템플릿
+
+* [`ops/tasks/task-index.yaml`](ops/tasks/task-index.yaml)
+
+  * TASK 계약과 의존성 Manifest
+
+* [`ops/state/project-state.json`](ops/state/project-state.json)
+
+  * Runtime State Projection
+
+* [`docs/07_operations/operational-hardening.md`](docs/07_operations/operational-hardening.md)
+
+  * Actions 공급망, 권한과 운영 보안
+
+* [`docs/07_operations/security-capability-matrix.md`](docs/07_operations/security-capability-matrix.md)
+
+  * 보안 통제와 플랫폼 제약
+
+---
+
 ## 안전 원칙
 
-* Secret을 파일에 커밋하지 않는다.
+* Secret을 저장소에 커밋하지 않는다.
 * Issue와 PR에 Token을 붙여 넣지 않는다.
 * CI를 우회하지 않는다.
-* 실패한 검증을 삭제하지 않는다.
-* 민감 작업은 자동 승인하지 않는다.
+* 실패한 검증 기록을 삭제하지 않는다.
+* 민감 작업을 자동 승인하지 않는다.
+* Unknown Dispatch 결과에서 재시도하지 않는다.
 * Jules 결과를 검증 없이 Production으로 간주하지 않는다.
-* `main`은 승인되고 검증된 결과만 보관한다.
+* `main`에는 승인되고 검증된 결과만 보관한다.
