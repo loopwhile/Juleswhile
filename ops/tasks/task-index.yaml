@@ -1,7 +1,7 @@
 schema_version: 1
 project_id: juleswhile
 generated_at: '2026-06-27T00:00:00+09:00'
-updated_at: '2026-06-29T09:11:31Z'
+updated_at: '2026-06-29T10:50:01Z'
 defaults:
   approval_policy: reviewer
   risk_level: medium
@@ -855,9 +855,9 @@ tasks:
   title: Operational readiness and supply-chain hardening
   role: developer
   type: maintenance
-  status: READY
+  status: COMPLETED
   priority: P0
-  enabled: true
+  enabled: false
   objective: Establish operational readiness for a live Jules pilot by repairing committed
     runtime projection drift, hardening GitHub Actions supply-chain and permissions,
     adding Dependabot and provenance controls where supported, documenting GitHub Free
@@ -973,7 +973,7 @@ tasks:
     goal_issue_number: 1
     issue_number: 22
     created_at: '2026-06-29T09:11:31Z'
-    updated_at: '2026-06-29T09:11:31Z'
+    updated_at: '2026-06-29T10:50:01Z'
     created_by: user
     tags:
     - control-plane
@@ -981,3 +981,99 @@ tasks:
     - supply-chain
     - operational-readiness
     - security
+- kind: task
+  id: TASK-009
+  title: Live Jules Session production pilot
+  role: verifier
+  type: verification
+  status: READY
+  priority: P0
+  enabled: true
+  objective: Run one live production pilot through the canonical Jules Dispatcher after
+    TASK-008 hardening is completed in production, creating exactly one real Jules
+    Session and verifying the PR, CI, Custom Auto Merge, Netlify Production, and completed
+    lifecycle path.
+  depends_on:
+  - TASK-008
+  inputs:
+  - AGENTS.md
+  - PROJECT_GOAL.md
+  - operator-guide.md
+  - GitHub Issue #26
+  - docs/07_operations/operational-hardening.md
+  - .github/workflows/02-dispatch-jules.yml
+  - ops/tasks/task-index.yaml
+  - ops/state/project-state.json
+  outputs:
+  - docs/07_operations/live-jules-pilot-2026-06-29.md
+  acceptance_criteria:
+  - Exactly one real Jules Session is created through the canonical Dispatcher.
+  - A quota reservation marker exists before Session creation.
+  - A dispatch intent marker exists before Session creation.
+  - The quota reservation is committed with the Session ID.
+  - Exactly one canonical Session marker exists.
+  - Duplicate Session count is zero.
+  - Jules changes only docs/07_operations/live-jules-pilot-2026-06-29.md.
+  - PR marker and TASK Issue reference are correct.
+  - CI succeeds.
+  - Custom Auto Merge succeeds after owner approval policy conditions are met.
+  - Netlify Production succeeds.
+  - Issue transitions to state:completed with closed reason completed.
+  - Projection returns active Session 0.
+  - No unresolved dispatch outcome remains.
+  allowed_paths:
+  - docs/07_operations/live-jules-pilot-2026-06-29.md
+  forbidden_paths:
+  - .github/**
+  - ops/**
+  - package.json
+  - package-lock.json
+  - netlify.toml
+  - src/**
+  - content/**
+  - public/**
+  - PROJECT_GOAL.md
+  - AGENTS.md
+  forbidden_actions:
+  - Read or print Secret values.
+  - Modify workflows.
+  - Create another TASK.
+  - Create another Jules Session.
+  - Push directly to main.
+  - Change dependencies.
+  - Change Netlify settings.
+  - Change authentication, payment, or credential policy.
+  validation_commands:
+  - npm run validate:schemas
+  - npm run validate:task-graph
+  - npm run validate:supply-chain
+  - npm run lint
+  - npm test
+  - npm run build
+  - npm run ci
+  risk_level: low
+  approval_policy: human
+  parallelizable: false
+  resource_locks:
+  - live-jules-pilot
+  - jules-dispatch
+  - runtime-state
+  conflicts_with: []
+  retry_policy:
+    max_corrections: 2
+    timeout_minutes: 90
+  stitch:
+    allowed: false
+    required: false
+    expected_outputs: []
+  metadata:
+    goal_issue_number: 1
+    issue_number: 26
+    created_at: '2026-06-29T10:50:01Z'
+    updated_at: '2026-06-29T10:50:01Z'
+    created_by: user
+    tags:
+    - live-pilot
+    - jules
+    - production
+    - verification
