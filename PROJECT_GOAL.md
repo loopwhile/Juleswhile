@@ -11,7 +11,7 @@ publishing_mode: review_required
 primary_branch: main
 created_at: null
 last_updated_at: null
----------------------
+---
 
 # Project Goal Template
 
