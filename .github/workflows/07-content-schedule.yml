@@ -92,6 +92,21 @@ jobs:
             FORCE_RUN=false
           fi
 
+          if [[ "$DRY_RUN" != "true" ]] \
+            && [[ "$FORCE_RUN" != "true" ]]; then
+            if [[ "$AUTOMATION_ENABLED" != "true" ]]; then
+              echo "::notice::AUTOMATION_ENABLED가 true가 아닙니다."
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if [[ "$CONTENT_AUTOMATION_ENABLED" != "true" ]]; then
+              echo "::notice::CONTENT_AUTOMATION_ENABLED가 true가 아닙니다."
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
           TEMPLATE_ID="$(
             printf '%s' "$TEMPLATE_ID" \
               | tr '[:lower:]' '[:upper:]' \
@@ -160,20 +175,6 @@ jobs:
               ;;
           esac
 
-          if [[ "$DRY_RUN" != "true" ]] \
-            && [[ "$FORCE_RUN" != "true" ]]; then
-            if [[ "$AUTOMATION_ENABLED" != "true" ]]; then
-              echo "::notice::AUTOMATION_ENABLED가 true가 아닙니다."
-              echo "should_run=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            if [[ "$CONTENT_AUTOMATION_ENABLED" != "true" ]]; then
-              echo "::notice::CONTENT_AUTOMATION_ENABLED가 true가 아닙니다."
-              echo "should_run=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
 
           echo "template_id=${TEMPLATE_ID}" >> "$GITHUB_OUTPUT"
           echo "content_type=${CONTENT_TYPE}" >> "$GITHUB_OUTPUT"

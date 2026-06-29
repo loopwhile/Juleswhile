@@ -1,7 +1,7 @@
 schema_version: 1
 project_id: juleswhile
 generated_at: '2026-06-27T00:00:00+09:00'
-updated_at: '2026-06-29T10:50:01Z'
+updated_at: '2026-06-29T12:02:01Z'
 defaults:
   approval_policy: reviewer
   risk_level: medium
@@ -986,9 +986,9 @@ tasks:
   title: Live Jules Session production pilot
   role: verifier
   type: verification
-  status: READY
+  status: COMPLETED
   priority: P0
-  enabled: true
+  enabled: false
   objective: Run one live production pilot through the canonical Jules Dispatcher after
     TASK-008 hardening is completed in production, creating exactly one real Jules
     Session and verifying the PR, CI, Custom Auto Merge, Netlify Production, and completed
@@ -1070,7 +1070,7 @@ tasks:
     goal_issue_number: 1
     issue_number: 26
     created_at: '2026-06-29T10:50:01Z'
-    updated_at: '2026-06-29T10:50:01Z'
+    updated_at: '2026-06-29T12:02:01Z'
     created_by: user
     tags:
     - live-pilot
