@@ -18,6 +18,7 @@
     "select:next-task": "tsx ops/scripts/select-next-task.ts",
     "materialize:issues": "tsx ops/scripts/materialize-issues.ts",
     "reconcile:project": "tsx ops/scripts/reconcile-project.ts",
+    "project:state": "tsx ops/scripts/rebuild-project-state.ts",
     "lint": "biome lint ops/scripts",
     "typecheck": "tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --lib ES2022,DOM --strict --skipLibCheck --types node ops/scripts/*.ts",
     "test:template": "npm run validate:schemas && npm run validate:task-graph && npm run typecheck",
