@@ -6,6 +6,15 @@ import process from "node:process";
 
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
+import {
+  assertLiveDispatchContext,
+  buildCanonicalSessionComment,
+  buildDispatchAttemptKey,
+  classifyJulesCreateFailure,
+  hasCanonicalSessionEvidence,
+  parseCommittedSessionEvidence,
+} from "./session-dispatch-atomicity.js";
+
 const TASK_INDEX_PATH = "ops/tasks/task-index.yaml";
 const EXECUTE_PROMPT_PATH = "ops/prompts/execute-task.md";
 const VERIFY_PROMPT_PATH = "ops/prompts/verify-task.md";
@@ -890,17 +899,11 @@ function buildReservationKey(
   task: TaskContract,
   issueNumber: number,
 ): string {
-  const workflowRunId =
-    process.env.GITHUB_RUN_ID ??
-    process.env.WORKFLOW_RUN_URL?.match(/\/actions\/runs\/([0-9]+)/)?.[1] ??
-    "manual";
-
-  return [
+  return buildDispatchAttemptKey(
     task.id,
     issueNumber,
-    workflowRunId,
-    Date.now(),
-  ].join("-");
+    process.env.GITHUB_RUN_ID ?? "",
+  );
 }
 
 async function ensureReservation(
@@ -1043,12 +1046,44 @@ async function recordQuotaOutcome(
         ? [
             `session_name: ${outcome.session.name}`,
             `session_id: ${outcome.session.id}`,
+            `session_url: ${outcome.session.url}`,
+            `session_state: ${outcome.session.state}`,
           ]
         : [`reason: ${outcome.reason}`]),
       `created_at: ${now.toISOString()}`,
       "```",
     ].join("\n"),
   );
+}
+
+async function recordCanonicalSession(
+  repository: string,
+  task: TaskContract,
+  issueNumber: number,
+  reservation: RuntimeReservation,
+  session: ExistingSession,
+  comments: GitHubComment[],
+): Promise<boolean> {
+  if (
+    hasCanonicalSessionEvidence(
+      comments,
+      session.name,
+    )
+  ) {
+    return false;
+  }
+
+  await comment(
+    repository,
+    issueNumber,
+    buildCanonicalSessionComment(
+      task.id,
+      reservation.key,
+      session,
+    ),
+  );
+
+  return true;
 }
 
 function validateIssueForDispatch(
@@ -1312,7 +1347,9 @@ async function createJulesSession(
       if (!response.ok) {
         throw new JulesSessionCreationError(
           `Jules API 요청 실패 HTTP ${response.status}: ${rawBody.slice(0, 2000)}`,
-          "failed",
+          classifyJulesCreateFailure(
+            response.status,
+          ),
           error,
         );
       }
@@ -1328,7 +1365,9 @@ async function createJulesSession(
   if (!response.ok) {
     throw new JulesSessionCreationError(
       `Jules API 요청 실패 HTTP ${response.status}: ${getApiErrorMessage(parsed, rawBody)}`,
-      "failed",
+      classifyJulesCreateFailure(
+        response.status,
+      ),
     );
   }
 
@@ -1483,6 +1522,19 @@ async function main(): Promise<void> {
     options.force,
   );
 
+  assertLiveDispatchContext({
+    dryRun: options.dryRun,
+    issueNumber: options.issueNumber,
+    githubActions:
+      process.env.GITHUB_ACTIONS,
+    workflowName:
+      process.env.JULES_DISPATCH_WORKFLOW,
+    workflowRef:
+      process.env.GITHUB_WORKFLOW_REF,
+    runId:
+      process.env.GITHUB_RUN_ID,
+  });
+
   const roleFile =
     getRoleFilePath(task.role);
 
@@ -1528,15 +1580,41 @@ async function main(): Promise<void> {
     existingSession =
       parseExistingSession(comments);
 
+    const committedEvidence =
+      parseCommittedSessionEvidence(comments);
+
+    if (
+      existingSession === null &&
+      committedEvidence !== null
+    ) {
+      if (!options.dryRun) {
+        await recordCanonicalSession(
+          options.repository,
+          task,
+          options.issueNumber,
+          {
+            key:
+              committedEvidence.reservationKey,
+            category:
+              committedEvidence.category,
+          },
+          committedEvidence.session,
+          comments,
+        );
+      }
+
+      existingSession =
+        committedEvidence.session;
+    }
+
     if (
       !options.dryRun &&
-      !options.force &&
       existingSession === null &&
       hasBlockingDispatchIntent(comments)
     ) {
       fail(
         "이전 Dispatch Intent가 Session 또는 명시적 해제 없이 남아 있습니다. " +
-          "중복 Jules Session 생성을 막기 위해 자동 Dispatch를 중단합니다.",
+          "force 옵션과 관계없이 중복 Jules Session 생성을 차단합니다.",
       );
     }
   }
@@ -1551,7 +1629,7 @@ async function main(): Promise<void> {
 
   if (
     existingSession !== null &&
-    !options.force
+    !options.dryRun
   ) {
     const duplicateResult =
       createResult(
@@ -1567,7 +1645,7 @@ async function main(): Promise<void> {
           duplicate: true,
           reusedExistingSession: true,
           reason:
-            "An existing Jules Session marker was found on the tracking Issue. No new Session was created.",
+            "Existing canonical or committed Jules Session evidence was found. No new Session was created.",
         },
       );
 
@@ -1705,6 +1783,15 @@ async function main(): Promise<void> {
         status: "committed",
         session,
       },
+    );
+
+    await recordCanonicalSession(
+      options.repository,
+      task,
+      options.issueNumber,
+      reservation,
+      session,
+      comments,
     );
   }
 
