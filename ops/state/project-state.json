@@ -3,7 +3,7 @@
   "projectId": "juleswhile",
   "stateAuthority": "github-issues-and-pull-requests",
   "status": "active",
-  "phase": "operations",
+  "phase": "goal-intake",
   "primaryBranch": "main",
   "repository": {
     "fullName": "loopwhile/Juleswhile",
@@ -115,16 +115,16 @@
     "updatedAt": "2026-06-27T00:00:00+09:00"
   },
   "automation": {
-    "enabled": false,
+    "enabled": true,
     "contentEnabled": false,
     "netlifyStatusEnabled": true,
     "mode": "guarded",
-    "pausedReason": "Production automation smoke test passed. Automation remains disabled until explicitly enabled by the operator."
+    "pausedReason": null
   },
   "taskSummary": {
     "total": 9,
     "draft": 0,
-    "ready": 1,
+    "ready": 0,
     "queued": 0,
     "dispatching": 0,
     "running": 0,
@@ -134,7 +134,7 @@
     "mergeReady": 0,
     "merged": 0,
     "deploying": 0,
-    "completed": 8,
+    "completed": 9,
     "failed": 0,
     "timeout": 0,
     "retryWait": 0,
@@ -146,21 +146,21 @@
     "activeSessions": [],
     "activePullRequests": [],
     "resourceLocks": [],
-    "lastReconciledAt": "2026-06-29T10:49:40.000Z"
+    "lastReconciledAt": "2026-06-29T12:02:01.000Z"
   },
   "quotas": {
-    "date": null,
+    "date": "2026-06-29",
     "hardLimit": 100,
     "newTaskBudget": 65,
     "correctionBudget": 20,
     "maintenanceBudget": 10,
     "reserve": 5,
-    "maxConcurrent": 10,
+    "maxConcurrent": 1,
     "used": {
-      "newTasks": 0,
+      "newTasks": 1,
       "corrections": 0,
       "maintenance": 0,
-      "total": 0
+      "total": 1
     }
   },
   "lastEvent": {
@@ -168,9 +168,9 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-06-29T10:49:40.000Z",
+    "occurredAt": "2026-06-29T12:02:01.000Z",
     "runUrl": null
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-06-29T10:49:40.000Z"
+  "updatedAt": "2026-06-29T12:02:01Z"
 }
