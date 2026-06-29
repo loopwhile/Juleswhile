@@ -1,7 +1,7 @@
 schema_version: 1
 project_id: juleswhile
 generated_at: '2026-06-27T00:00:00+09:00'
-updated_at: '2026-06-29T08:10:26.039509Z'
+updated_at: '2026-06-29T09:11:31Z'
 defaults:
   approval_policy: reviewer
   risk_level: medium
@@ -727,9 +727,9 @@ tasks:
   title: Rebuild runtime state projection
   role: developer
   type: maintenance
-  status: READY
+  status: COMPLETED
   priority: P0
-  enabled: true
+  enabled: false
   objective: Rebuild the committed runtime state projection deterministically from canonical
     GitHub Issues, Pull Requests, Jules Session observations, resource locks, and quota ledger evidence.
   depends_on:
@@ -842,7 +842,7 @@ tasks:
     goal_issue_number: 1
     issue_number: 20
     created_at: '2026-06-29T08:10:26.039509Z'
-    updated_at: '2026-06-29T08:10:26.039509Z'
+    updated_at: '2026-06-29T09:11:31Z'
     created_by: user
     tags:
     - control-plane
@@ -850,3 +850,134 @@ tasks:
     - runtime-state
     - projection
     - recovery
+- kind: task
+  id: TASK-008
+  title: Operational readiness and supply-chain hardening
+  role: developer
+  type: maintenance
+  status: READY
+  priority: P0
+  enabled: true
+  objective: Establish operational readiness for a live Jules pilot by repairing committed
+    runtime projection drift, hardening GitHub Actions supply-chain and permissions,
+    adding Dependabot and provenance controls where supported, documenting GitHub Free
+    private repository constraints, and defining guarded automation activation criteria.
+  depends_on:
+  - TASK-007
+  inputs:
+  - AGENTS.md
+  - README.md
+  - PROJECT_GOAL.md
+  - operator-guide.md
+  - GitHub Issue #22
+  - .github/workflows/**
+  - .github/ISSUE_TEMPLATE/**
+  - .github/pull_request_template.md
+  - ops/tasks/task-index.yaml
+  - ops/state/project-state.json
+  - ops/schemas/**
+  - ops/scripts/**
+  - package.json
+  - package-lock.json
+  outputs:
+  - .github/workflows/**
+  - .github/dependabot.yml
+  - .github/CODEOWNERS
+  - .github/actions/**
+  - ops/scripts/**
+  - ops/schemas/**
+  - ops/tasks/task-index.yaml
+  - ops/state/project-state.json
+  - docs/07_operations/**
+  - operator-guide.md
+  - README.md
+  - package.json
+  - package-lock.json
+  acceptance_criteria:
+  - Committed runtime Projection aligns with GitHub authority.
+  - All external GitHub Actions are pinned to immutable full commit SHAs.
+  - Workflow GITHUB_TOKEN permissions are minimized and documented.
+  - Checkout credentials, shell execution, and untrusted input handling are audited and hardened.
+  - Dependabot configuration exists for npm and GitHub Actions without automatic merging.
+  - SBOM, package-lock/build hashes, audit, and provenance support are implemented or documented with plan constraints.
+  - Main direct-push protection has detective/compensating controls when server-side enforcement is unavailable.
+  - Operational readiness documentation and validation automation are added.
+  - No real Jules Session is created during TASK-008.
+  - npm run lint passes.
+  - npm run validate:schemas passes.
+  - npm run validate:task-graph passes.
+  - npm run validate:supply-chain passes.
+  - npm run typecheck passes.
+  - npm test passes.
+  - npm run build passes.
+  - npm run ci passes.
+  - git diff --check passes.
+  allowed_paths:
+  - .github/workflows/**
+  - .github/dependabot.yml
+  - .github/CODEOWNERS
+  - .github/actions/**
+  - ops/scripts/**
+  - ops/schemas/**
+  - ops/tasks/task-index.yaml
+  - ops/state/project-state.json
+  - docs/07_operations/**
+  - operator-guide.md
+  - README.md
+  - package.json
+  - package-lock.json
+  forbidden_paths:
+  - src/**
+  - content/**
+  - public/**
+  - netlify.toml
+  - PROJECT_GOAL.md
+  - Authentication, payment, credential, and secret value files.
+  forbidden_actions:
+  - Create a real Jules Session during TASK-008.
+  - Enable AUTOMATION_ENABLED during TASK-008.
+  - Enable CONTENT_AUTOMATION_ENABLED.
+  - Read or print Secret values.
+  - Change Netlify configuration.
+  - Change repository visibility or billing plan.
+  - Bypass Pull Request validation.
+  - Directly push generated work to main.
+  - Delete tests or weaken validation gates.
+  validation_commands:
+  - npm run lint
+  - npm run validate:schemas
+  - npm run validate:task-graph
+  - npm run validate:supply-chain
+  - npm run typecheck
+  - npm test
+  - npm run build
+  - npm run ci
+  - git diff --check
+  risk_level: high
+  approval_policy: human
+  parallelizable: false
+  resource_locks:
+  - control-plane
+  - github-actions
+  - supply-chain
+  - runtime-state
+  conflicts_with: []
+  retry_policy:
+    max_corrections: 2
+    timeout_minutes: 120
+  stitch:
+    allowed: false
+    required: false
+    expected_outputs: []
+  metadata:
+    goal_issue_number: 1
+    issue_number: 22
+    created_at: '2026-06-29T09:11:31Z'
+    updated_at: '2026-06-29T09:11:31Z'
+    created_by: user
+    tags:
+    - control-plane
+    - github-actions
+    - supply-chain
+    - operational-readiness
+    - security
