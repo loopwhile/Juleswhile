@@ -18,6 +18,7 @@ PR Validation:       검증 완료
 Auto Merge:          검증 완료
 Netlify Production:  검증 완료
 기본 운영 모드:       Guarded Automation
+공급망 검증:          SHA-pinned Actions + Dependabot + SBOM/Hash 절차
 ```
 
 검증된 실행 흐름:
@@ -87,6 +88,10 @@ AI가 완료했다고 주장하는 것과 검증된 완료를 구분한다.
 ## 새 프로젝트 빠른 시작
 
 전체 설명은 [`operator-guide.md`](operator-guide.md)를 따른다.
+
+운영 보안과 공급망 검증 절차는
+[`docs/07_operations/operational-hardening.md`](docs/07_operations/operational-hardening.md)와
+[`docs/07_operations/security-capability-matrix.md`](docs/07_operations/security-capability-matrix.md)를 따른다.
 
 ### 1. 환경값 결정
 

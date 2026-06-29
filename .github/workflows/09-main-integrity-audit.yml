@@ -1,0 +1,225 @@
+name: "09 · Main Integrity Audit"
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      before:
+        description: "감사 시작 Commit SHA"
+        required: false
+        type: string
+
+      after:
+        description: "감사 종료 Commit SHA"
+        required: false
+        type: string
+
+      dry_run:
+        description: "Incident Issue를 생성하지 않고 결과만 확인"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: main-integrity-${{ github.repository }}-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  MAIN_DIRECT_PUSH_ALLOWED_ACTOR: loopwhile
+
+jobs:
+  audit:
+    name: Audit main commit provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Resolve audit input
+        id: input
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_AFTER: ${{ github.event.after }}
+          MANUAL_BEFORE: ${{ inputs.before }}
+          MANUAL_AFTER: ${{ inputs.after }}
+          MANUAL_DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            BEFORE_SHA="${MANUAL_BEFORE:-}"
+            AFTER_SHA="${MANUAL_AFTER:-${GITHUB_SHA}}"
+            DRY_RUN="${MANUAL_DRY_RUN:-true}"
+          else
+            BEFORE_SHA="${EVENT_BEFORE:-}"
+            AFTER_SHA="${EVENT_AFTER:-${GITHUB_SHA}}"
+            DRY_RUN=false
+          fi
+
+          if [[ -n "$BEFORE_SHA" ]] \
+            && [[ ! "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::before는 40자 Git SHA여야 합니다."
+            exit 1
+          fi
+
+          if [[ ! "$AFTER_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::after는 40자 Git SHA여야 합니다."
+            exit 1
+          fi
+
+          case "$DRY_RUN" in
+            true|false)
+              ;;
+            *)
+              echo "::error::dry_run은 true 또는 false여야 합니다."
+              exit 1
+              ;;
+          esac
+
+          echo "before=${BEFORE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "after=${AFTER_SHA}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+
+      - name: Audit commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BEFORE_SHA: ${{ steps.input.outputs.before }}
+          AFTER_SHA: ${{ steps.input.outputs.after }}
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+          ACTOR: ${{ github.actor }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          COMMITS_FILE="${RUNNER_TEMP}/main-commits.json"
+          FINDINGS_FILE="${RUNNER_TEMP}/main-integrity-findings.json"
+
+          if [[ -n "$BEFORE_SHA" ]] \
+            && [[ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
+            gh api \
+              "repos/${REPOSITORY}/compare/${BEFORE_SHA}...${AFTER_SHA}" \
+              --jq '[.commits[].sha]' \
+              > "$COMMITS_FILE"
+          else
+            jq -n --arg sha "$AFTER_SHA" '[$sha]' > "$COMMITS_FILE"
+          fi
+
+          jq -n '[]' > "$FINDINGS_FILE"
+
+          while IFS= read -r commit_sha; do
+            ASSOCIATED_PRS="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/${REPOSITORY}/commits/${commit_sha}/pulls" \
+                --jq '[.[] | select(.merged_at != null and .base.ref == "main") | {number, merged_at, url: .html_url}]'
+            )"
+
+            PR_COUNT="$(
+              jq -r 'length' <<< "$ASSOCIATED_PRS"
+            )"
+
+            if (( PR_COUNT > 0 )); then
+              continue
+            fi
+
+            jq \
+              --arg commit "$commit_sha" \
+              --arg actor "$ACTOR" \
+              '. + [{commit: $commit, actor: $actor, associatedPullRequests: 0}]' \
+              "$FINDINGS_FILE" \
+              > "${FINDINGS_FILE}.tmp"
+
+            mv "${FINDINGS_FILE}.tmp" "$FINDINGS_FILE"
+          done < <(jq -r '.[]' "$COMMITS_FILE")
+
+          FINDING_COUNT="$(
+            jq -r 'length' "$FINDINGS_FILE"
+          )"
+
+          {
+            echo "# Main Integrity Audit"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| Actor | \`${ACTOR}\` |"
+            echo "| Before | \`${BEFORE_SHA:-none}\` |"
+            echo "| After | \`${AFTER_SHA}\` |"
+            echo "| Unassociated commits | \`${FINDING_COUNT}\` |"
+            echo "| Dry run | \`${DRY_RUN}\` |"
+            echo
+            echo "This is a detective/compensating control, not server-side branch protection."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if (( FINDING_COUNT == 0 )); then
+            exit 0
+          fi
+
+          if [[ "$ACTOR" == "$MAIN_DIRECT_PUSH_ALLOWED_ACTOR" ]]; then
+            echo "::warning::Owner direct push detected and recorded as allowed by current policy."
+            cat "$FINDINGS_FILE"
+            exit 0
+          fi
+
+          if [[ "$DRY_RUN" == "true" ]]; then
+            echo "::error::Unauthorized direct push would create an incident."
+            cat "$FINDINGS_FILE"
+            exit 1
+          fi
+
+          INCIDENT_MARKER="<!-- juleswhile:incident:main-integrity:${AFTER_SHA} -->"
+
+          EXISTING="$(
+            gh issue list \
+              --repo "$REPOSITORY" \
+              --state open \
+              --search "$INCIDENT_MARKER" \
+              --json number \
+              --jq 'length'
+          )"
+
+          if [[ "$EXISTING" != "0" ]]; then
+            echo "::error::Unauthorized direct push incident already exists for ${AFTER_SHA}."
+            exit 1
+          fi
+
+          BODY_FILE="${RUNNER_TEMP}/main-integrity-incident.md"
+
+          {
+            echo "$INCIDENT_MARKER"
+            echo
+            echo "## Summary"
+            echo
+            echo "Unauthorized direct push to main was detected by the Juleswhile detective control."
+            echo
+            echo "## Evidence"
+            echo
+            echo "- Actor: \`${ACTOR}\`"
+            echo "- Before: \`${BEFORE_SHA:-none}\`"
+            echo "- After: \`${AFTER_SHA}\`"
+            echo
+            echo '```json'
+            cat "$FINDINGS_FILE"
+            echo '```'
+            echo
+            echo "No secret values were inspected or recorded."
+          } > "$BODY_FILE"
+
+          gh issue create \
+            --repo "$REPOSITORY" \
+            --title "[INCIDENT] Unauthorized main direct push detected" \
+            --label incident \
+            --label state:investigating \
+            --body-file "$BODY_FILE" \
+            > /dev/null
+
+          echo "::error::Unauthorized direct push detected."
+          exit 1
