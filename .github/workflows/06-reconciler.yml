@@ -100,6 +100,8 @@ jobs:
             "ops/tasks/task-index.yaml"
             "ops/state/project-state.json"
             "ops/scripts/reconcile-project.ts"
+            "ops/scripts/rebuild-project-state.ts"
+            "ops/schemas/project-state.schema.json"
           )
 
           for file in "${REQUIRED_FILES[@]}"; do
@@ -247,6 +249,112 @@ jobs:
           echo "unknown_states=${UNKNOWN_STATES}" >> "$GITHUB_OUTPUT"
           echo "result_file=${RESULT_FILE}" >> "$GITHUB_OUTPUT"
 
+      - name: Rebuild runtime state projection
+        id: projection
+        if: steps.input.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          DRY_RUN: ${{ steps.input.outputs.dry_run }}
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          JULES_API_BASE_URL: ${{ vars.JULES_API_BASE_URL }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          RESULT_FILE="${RUNNER_TEMP}/project-state-projection.json"
+
+          COMMAND=(
+            npm
+            run
+            project:state
+            --
+            --response-file
+            "$RESULT_FILE"
+          )
+
+          if [[ "$DRY_RUN" == "true" ]]; then
+            COMMAND+=(--dry-run)
+          else
+            COMMAND+=(--apply)
+          fi
+
+          "${COMMAND[@]}"
+
+          jq empty "$RESULT_FILE"
+
+          CHANGED="$(
+            jq -r '.changed // false'               "$RESULT_FILE"
+          )"
+
+          OBSERVED_AT="$(
+            jq -r '.observedAt // ""'               "$RESULT_FILE"
+          )"
+
+          TASK_TOTAL="$(
+            jq -r '.taskSummary.total // 0'               "$RESULT_FILE"
+          )"
+
+          TASK_COMPLETED="$(
+            jq -r '.taskSummary.completed // 0'               "$RESULT_FILE"
+          )"
+
+          TASK_READY="$(
+            jq -r '.taskSummary.ready // 0'               "$RESULT_FILE"
+          )"
+
+          STATE_LABEL_CONFLICTS="$(
+            jq -r '.drift.stateLabelConflicts | length'               "$RESULT_FILE"
+          )"
+
+          MISSING_CANONICAL_ISSUES="$(
+            jq -r '.drift.missingCanonicalIssues | length'               "$RESULT_FILE"
+          )"
+
+          SUPERSEDED_ISSUES="$(
+            jq -r '.drift.supersededIssues | length'               "$RESULT_FILE"
+          )"
+
+          MANIFEST_MISMATCHES="$(
+            jq -r '.drift.manifestMismatches | length'               "$RESULT_FILE"
+          )"
+
+          ISSUE_LIFECYCLE_MISMATCHES="$(
+            jq -r '.drift.issueLifecycleMismatches | length'               "$RESULT_FILE"
+          )"
+
+          SESSION_LOOKUP_ERRORS="$(
+            jq -r '.sessionLookupErrors | length'               "$RESULT_FILE"
+          )"
+
+          echo "result_file=${RESULT_FILE}"             >> "$GITHUB_OUTPUT"
+          echo "changed=${CHANGED}"             >> "$GITHUB_OUTPUT"
+          echo "observed_at=${OBSERVED_AT}"             >> "$GITHUB_OUTPUT"
+          echo "task_total=${TASK_TOTAL}"             >> "$GITHUB_OUTPUT"
+          echo "task_completed=${TASK_COMPLETED}"             >> "$GITHUB_OUTPUT"
+          echo "task_ready=${TASK_READY}"             >> "$GITHUB_OUTPUT"
+          echo "state_label_conflicts=${STATE_LABEL_CONFLICTS}"             >> "$GITHUB_OUTPUT"
+          echo "missing_canonical_issues=${MISSING_CANONICAL_ISSUES}"             >> "$GITHUB_OUTPUT"
+          echo "superseded_issues=${SUPERSEDED_ISSUES}"             >> "$GITHUB_OUTPUT"
+          echo "manifest_mismatches=${MANIFEST_MISMATCHES}"             >> "$GITHUB_OUTPUT"
+          echo "issue_lifecycle_mismatches=${ISSUE_LIFECYCLE_MISMATCHES}"             >> "$GITHUB_OUTPUT"
+          echo "session_lookup_errors=${SESSION_LOOKUP_ERRORS}"             >> "$GITHUB_OUTPUT"
+
+          if [[ "$SESSION_LOOKUP_ERRORS" -gt 0 ]]; then
+            echo "::error::Jules Session 조회 오류가 있어 Projection 결과를 신뢰할 수 없습니다."
+            exit 1
+          fi
+
+          if [[ "$MISSING_CANONICAL_ISSUES" -gt 0 ]]; then
+            echo "::error::canonical TASK Issue가 누락되었습니다."
+            exit 1
+          fi
+
+          if [[ "$MANIFEST_MISMATCHES" -gt 0 ]]; then
+            echo "::error::Manifest와 canonical Issue 사이에 상태 불일치가 있습니다."
+            exit 1
+          fi
+
       - name: Trigger next TASK evaluation
         if: >-
           steps.reconcile.outputs.should_schedule_next == 'true' &&
@@ -291,6 +399,17 @@ jobs:
           API_ERRORS: ${{ steps.reconcile.outputs.api_errors }}
           UNKNOWN_STATES: ${{ steps.reconcile.outputs.unknown_states }}
           SHOULD_SCHEDULE_NEXT: ${{ steps.reconcile.outputs.should_schedule_next }}
+          PROJECTION_CHANGED: ${{ steps.projection.outputs.changed }}
+          PROJECTION_OBSERVED_AT: ${{ steps.projection.outputs.observed_at }}
+          PROJECTION_TASK_TOTAL: ${{ steps.projection.outputs.task_total }}
+          PROJECTION_TASK_COMPLETED: ${{ steps.projection.outputs.task_completed }}
+          PROJECTION_TASK_READY: ${{ steps.projection.outputs.task_ready }}
+          PROJECTION_STATE_CONFLICTS: ${{ steps.projection.outputs.state_label_conflicts }}
+          PROJECTION_MISSING_ISSUES: ${{ steps.projection.outputs.missing_canonical_issues }}
+          PROJECTION_SUPERSEDED_ISSUES: ${{ steps.projection.outputs.superseded_issues }}
+          PROJECTION_MANIFEST_MISMATCHES: ${{ steps.projection.outputs.manifest_mismatches }}
+          PROJECTION_LIFECYCLE_MISMATCHES: ${{ steps.projection.outputs.issue_lifecycle_mismatches }}
+          PROJECTION_SESSION_ERRORS: ${{ steps.projection.outputs.session_lookup_errors }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -312,6 +431,22 @@ jobs:
             echo "| API errors | \`${API_ERRORS}\` |"
             echo "| Unknown states | \`${UNKNOWN_STATES}\` |"
             echo "| Schedule next TASK | \`${SHOULD_SCHEDULE_NEXT}\` |"
+            echo
+            echo "## Runtime State Projection"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| Changed | \`${PROJECTION_CHANGED}\` |"
+            echo "| Observed at | \`${PROJECTION_OBSERVED_AT}\` |"
+            echo "| TASK total | \`${PROJECTION_TASK_TOTAL}\` |"
+            echo "| TASK completed | \`${PROJECTION_TASK_COMPLETED}\` |"
+            echo "| TASK ready | \`${PROJECTION_TASK_READY}\` |"
+            echo "| State-label conflicts | \`${PROJECTION_STATE_CONFLICTS}\` |"
+            echo "| Missing canonical Issues | \`${PROJECTION_MISSING_ISSUES}\` |"
+            echo "| Superseded Issues | \`${PROJECTION_SUPERSEDED_ISSUES}\` |"
+            echo "| Manifest mismatches | \`${PROJECTION_MANIFEST_MISMATCHES}\` |"
+            echo "| Lifecycle mismatches | \`${PROJECTION_LIFECYCLE_MISMATCHES}\` |"
+            echo "| Session lookup errors | \`${PROJECTION_SESSION_ERRORS}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Reconciler report
@@ -325,5 +460,19 @@ jobs:
               github.run_attempt
             }}
           path: ${{ steps.reconcile.outputs.result_file }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Runtime State Projection report
+        if: always() && steps.projection.outputs.result_file != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: >-
+            runtime-state-projection-${{
+              github.run_id
+            }}-${{
+              github.run_attempt
+            }}
+          path: ${{ steps.projection.outputs.result_file }}
           if-no-files-found: warn
           retention-days: 14

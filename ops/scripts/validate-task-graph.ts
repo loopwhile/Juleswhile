@@ -72,8 +72,23 @@ interface ValidationReport {
 interface ProjectState {
 	taskSummary: {
 		total: number;
+		draft: number;
 		ready: number;
+		queued: number;
+		dispatching: number;
+		running: number;
+		prOpened: number;
+		validating: number;
+		correcting: number;
+		mergeReady: number;
+		merged: number;
+		deploying: number;
+		completed: number;
+		failed: number;
+		timeout: number;
+		retryWait: number;
 		blocked: number;
+		cancelled: number;
 		templates: number;
 	};
 }
@@ -492,17 +507,15 @@ async function validateGraph(taskIndex: TaskIndex): Promise<ValidationReport> {
 
 	const projectState = await readProjectState();
 
-	const expectedStateSummary = {
+	const expectedStaticSummary = {
 		total: summary.tasks,
-		ready: summary.ready,
-		blocked: summary.blocked,
 		templates: summary.templates,
 	};
 
 	for (const [
 		field,
 		expected,
-	] of Object.entries(expectedStateSummary)) {
+	] of Object.entries(expectedStaticSummary)) {
 		const actual =
 			projectState.taskSummary[
 				field as keyof ProjectState["taskSummary"]
@@ -514,6 +527,43 @@ async function validateGraph(taskIndex: TaskIndex): Promise<ValidationReport> {
 					`expected=${expected}, actual=${actual}`,
 			);
 		}
+	}
+
+	const lifecycleFields = [
+		"draft",
+		"ready",
+		"queued",
+		"dispatching",
+		"running",
+		"prOpened",
+		"validating",
+		"correcting",
+		"mergeReady",
+		"merged",
+		"deploying",
+		"completed",
+		"failed",
+		"timeout",
+		"retryWait",
+		"blocked",
+		"cancelled",
+	] as const;
+
+	const projectedTaskTotal =
+		lifecycleFields.reduce(
+			(total, field) =>
+				total +
+				projectState.taskSummary[field],
+			0,
+		);
+
+	if (
+		projectedTaskTotal !==
+		projectState.taskSummary.total
+	) {
+		errors.push(
+			`project-state lifecycle 합계 불일치: expected=${projectState.taskSummary.total}, actual=${projectedTaskTotal}`,
+		);
 	}
 
 	return {
