@@ -113,6 +113,20 @@ gh auth status
 gh auth login
 ```
 
+운영 보안 검증:
+
+```bash
+npm run validate:supply-chain
+npm --silent run sbom:cyclonedx > dist/sbom.cdx.json
+npm run build
+npm run hash:artifacts
+```
+
+공급망 정책, Dependabot 처리 절차, GitHub Free private repository 제약,
+main 직접 push 보완 통제는
+[`docs/07_operations/operational-hardening.md`](docs/07_operations/operational-hardening.md)와
+[`docs/07_operations/security-capability-matrix.md`](docs/07_operations/security-capability-matrix.md)를 기준으로 한다.
+
 ---
 
 # 4. 새 프로젝트 값 결정
