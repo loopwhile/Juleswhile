@@ -4,6 +4,7 @@ on:
   repository_dispatch:
     types:
       - pr_merged
+      - deployment_completed
       - task_completed
       - reconcile_ready
 
@@ -53,6 +54,7 @@ jobs:
         id: input
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_TYPE: ${{ github.event.action }}
           EVENT_SOURCE_TASK_ID: ${{ github.event.client_payload.task_id }}
           EVENT_DRY_RUN: ${{ github.event.client_payload.dry_run }}
           MANUAL_SOURCE_TASK_ID: ${{ inputs.source_task_id }}
@@ -77,6 +79,14 @@ jobs:
               | tr '[:lower:]' '[:upper:]' \
               | xargs
           )"
+
+          if [[ "$EVENT_NAME" == "repository_dispatch" ]] \
+            && [[ "$EVENT_TYPE" == "pr_merged" ]] \
+            && [[ "$SOURCE_TASK_ID" =~ ^(TASK-|CORRECTION-) ]]; then
+            echo "::notice::Skip TASK pr_merged before deployment verification."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           case "$DRY_RUN" in
             true|false)

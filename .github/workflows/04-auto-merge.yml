@@ -450,7 +450,34 @@ jobs:
           echo "merge_sha=${MERGE_SHA}" >> "$GITHUB_OUTPUT"
           echo "merged_at=${MERGED_AT}" >> "$GITHUB_OUTPUT"
 
-      - name: Complete linked TASK Issue
+      - name: Checkout merged main for TASK transition
+        if: >-
+          steps.merge.outcome == 'success' &&
+          steps.policy.outputs.task_issue_number != ''
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js for TASK transition
+        if: >-
+          steps.merge.outcome == 'success' &&
+          steps.policy.outputs.task_issue_number != ''
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install TASK transition dependencies
+        if: >-
+          steps.merge.outcome == 'success' &&
+          steps.policy.outputs.task_issue_number != ''
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Mark linked TASK Issue as deploying
         if: >-
           steps.merge.outcome == 'success' &&
           steps.policy.outputs.task_issue_number != ''
@@ -465,41 +492,13 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          gh label create "state:completed" \
-            --repo "$REPOSITORY" \
-            --color "0E8A16" \
-            --description "TASK completed and merged into main" \
-            --force
+          gh label create "state:deploying"             --repo "$REPOSITORY"             --color "1D76DB"             --description "TASK is waiting for production deployment verification"             --force
 
-          for label in             "state:running"             "state:validating"
-          do
-            gh api               --method DELETE               "repos/${REPOSITORY}/issues/${TASK_ISSUE_NUMBER}/labels/${label}"               > /dev/null 2>&1               || true
-          done
+          RESULT_FILE="${RUNNER_TEMP}/task-deploying-result.json"
 
-          jq -n             '{labels:["state:completed"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${TASK_ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
+          npm run transition:task-state --             --mode deploying             --issue-number "$TASK_ISSUE_NUMBER"             --task-id "$TASK_ID"             --merge-sha "$MERGE_SHA"             --pr-number "$RESOLVED_PR_NUMBER"             --response-file "$RESULT_FILE"
 
-          gh issue comment "$TASK_ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --body "$(
-              cat <<EOF
-          <!-- juleswhile:task-completed -->
-
-          ## TASK 완료
-
-          \`${TASK_ID}\`의 Pull Request가 \`main\`에 병합됐습니다.
-
-          - Pull Request: #${RESOLVED_PR_NUMBER}
-          - Merge Commit: \`${MERGE_SHA}\`
-          - Merge Method: \`${MERGE_METHOD}\`
-
-          후속 TASK 선택은 Next TASK Workflow가 처리합니다.
-          EOF
-            )"
-
-          jq -n             '{
-              state: "closed",
-              state_reason: "completed"
-            }'             | gh api                 --method PATCH                 "repos/${REPOSITORY}/issues/${TASK_ISSUE_NUMBER}"                 --input -                 > /dev/null
+          jq empty "$RESULT_FILE"
 
       - name: Complete linked Goal Issue
         if: >-

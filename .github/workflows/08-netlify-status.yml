@@ -35,7 +35,7 @@ on:
         type: boolean
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 concurrency:
@@ -139,10 +139,18 @@ jobs:
               ;;
           esac
 
+          echo "merge_sha=${MERGE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${MERGE_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
+          echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "force=${FORCE_RUN}" >> "$GITHUB_OUTPUT"
+
           if [[ "$NETLIFY_STATUS_ENABLED" != "true" ]] \
             && [[ "$DRY_RUN" != "true" ]] \
             && [[ "$FORCE_RUN" != "true" ]]; then
-            echo "::notice::NETLIFY_STATUS_ENABLED가 true가 아니므로 배포 확인을 건너뜁니다."
+            echo "::notice::NETLIFY_STATUS_ENABLED가 true가 아니므로 TASK를 완료 처리하지 않습니다."
+            echo "verification_disabled=true" >> "$GITHUB_OUTPUT"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -161,13 +169,85 @@ jobs:
             exit 1
           fi
 
-          echo "merge_sha=${MERGE_SHA}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${MERGE_SHA:0:7}" >> "$GITHUB_OUTPUT"
-          echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
-          echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
-          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
-          echo "force=${FORCE_RUN}" >> "$GITHUB_OUTPUT"
+          echo "verification_disabled=false" >> "$GITHUB_OUTPUT"
           echo "should_run=true" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure deployment lifecycle labels
+        if: steps.input.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "state:deploying"             --repo "$REPOSITORY"             --color "1D76DB"             --description "TASK is waiting for production deployment verification"             --force
+
+          gh label create "state:completed"             --repo "$REPOSITORY"             --color "0E8A16"             --description "TASK completed after production deployment verification"             --force
+
+          gh label create "state:deployment-review"             --repo "$REPOSITORY"             --color "FBCA04"             --description "Deployment failure requires review"             --force
+
+          gh label create "deployment:ready"             --repo "$REPOSITORY"             --color "0E8A16"             --description "Production deployment is ready"             --force
+
+          gh label create "deployment:failed"             --repo "$REPOSITORY"             --color "D73A4A"             --description "Production deployment failed or timed out"             --force
+
+          gh label create "deployment:verification-disabled"             --repo "$REPOSITORY"             --color "FBCA04"             --description "Production deployment verification is disabled"             --force
+
+      - name: Checkout main for deployment transition
+        if: >-
+          steps.input.outputs.issue_number != '' &&
+          (
+            steps.input.outputs.should_run == 'true' ||
+            steps.input.outputs.verification_disabled == 'true'
+          )
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js for deployment transition
+        if: >-
+          steps.input.outputs.issue_number != '' &&
+          (
+            steps.input.outputs.should_run == 'true' ||
+            steps.input.outputs.verification_disabled == 'true'
+          )
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install deployment transition dependencies
+        if: >-
+          steps.input.outputs.issue_number != '' &&
+          (
+            steps.input.outputs.should_run == 'true' ||
+            steps.input.outputs.verification_disabled == 'true'
+          )
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Record disabled deployment verification
+        if: >-
+          steps.input.outputs.verification_disabled == 'true' &&
+          steps.input.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.input.outputs.issue_number }}
+          TASK_ID: ${{ steps.input.outputs.task_id }}
+          MERGE_SHA: ${{ steps.input.outputs.merge_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          RESULT_FILE="${RUNNER_TEMP}/deployment-verification-disabled.json"
+
+          npm run transition:task-state --             --mode verification-disabled             --issue-number "$ISSUE_NUMBER"             --task-id "$TASK_ID"             --merge-sha "$MERGE_SHA"             --response-file "$RESULT_FILE"
+
+          jq empty "$RESULT_FILE"
 
       - name: Validate Netlify configuration
         if: steps.input.outputs.should_run == 'true'
@@ -429,38 +509,8 @@ jobs:
             exit 1
           fi
 
-      - name: Ensure deployment labels
-        if: >-
-          always() &&
-          steps.input.outputs.should_run == 'true' &&
-          steps.input.outputs.dry_run != 'true' &&
-          steps.input.outputs.issue_number != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          gh label create "deployment:ready" \
-            --repo "$REPOSITORY" \
-            --color "0E8A16" \
-            --description "Production deployment is ready" \
-            --force
-
-          gh label create "deployment:failed" \
-            --repo "$REPOSITORY" \
-            --color "D73A4A" \
-            --description "Production deployment failed or timed out" \
-            --force
-
-          gh label create "state:deployment-review" \
-            --repo "$REPOSITORY" \
-            --color "FBCA04" \
-            --description "Deployment failure requires review" \
-            --force
-
       - name: Record successful production deployment
+        id: transition
         if: >-
           success() &&
           steps.deploy.outcome == 'success' &&
@@ -477,38 +527,41 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          for label in             "deployment:failed"             "state:deployment-review"
-          do
-            gh api               --method DELETE               "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels/${label}"               > /dev/null 2>&1               || true
-          done
+          RESULT_FILE="${RUNNER_TEMP}/deployment-completed.json"
 
-          jq -n             '{labels:["deployment:ready"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels"                 --input -                 > /dev/null
+          npm run transition:task-state --             --mode completed             --issue-number "$ISSUE_NUMBER"             --task-id "$TASK_ID"             --merge-sha "$MERGE_SHA"             --deploy-id "${DEPLOY_ID:-unknown}"             --deploy-url "${DEPLOY_URL:-unknown}"             --deploy-state ready             --response-file "$RESULT_FILE"
 
-          gh issue comment "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --body "$(
-              cat <<EOF
-          <!-- juleswhile:netlify-ready -->
+          jq empty "$RESULT_FILE"
 
-          ## Netlify Production Deploy 완료
+      - name: Dispatch next TASK after production deployment
+        if: >-
+          steps.transition.outcome == 'success' &&
+          steps.input.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.input.outputs.issue_number }}
+          TASK_ID: ${{ steps.input.outputs.task_id }}
+          MERGE_SHA: ${{ steps.input.outputs.merge_sha }}
+          DEPLOY_ID: ${{ steps.deploy.outputs.deploy_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
 
-          \`${TASK_ID:-TASK}\`의 \`main\` 병합 결과가 Netlify Production에 배포됐습니다.
+          PAYLOAD_FILE="${RUNNER_TEMP}/deployment-completed-dispatch.json"
 
-          | 항목 | 값 |
-          |---|---|
-          | Merge Commit | \`${MERGE_SHA}\` |
-          | Netlify Deploy | \`${DEPLOY_ID}\` |
-          | 상태 | \`ready\` |
+          jq -n             --arg task_id "$TASK_ID"             --arg task_issue_number "$ISSUE_NUMBER"             --arg merge_sha "$MERGE_SHA"             --arg deploy_id "$DEPLOY_ID"             '{
+              event_type: "deployment_completed",
+              client_payload: {
+                task_id: $task_id,
+                task_issue_number: $task_issue_number,
+                merge_sha: $merge_sha,
+                deploy_id: $deploy_id,
+                dry_run: false
+              }
+            }'             > "$PAYLOAD_FILE"
 
-          $(
-            if [[ -n "$DEPLOY_URL" ]]; then
-              printf '%s\n' "[Production 결과 확인](${DEPLOY_URL})"
-            else
-              printf '%s\n' "Production URL은 API 응답에 포함되지 않았습니다."
-            fi
-          )
-          EOF
-            )"
+          gh api             --method POST             "repos/${REPOSITORY}/dispatches"             --input "$PAYLOAD_FILE"
 
       - name: Record deployment failure
         if: >-
@@ -529,44 +582,8 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          jq -n             '{
-              state: "open",
-              state_reason: "reopened"
-            }'             | gh api                 --method PATCH                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}"                 --input -                 > /dev/null             || true
+          RESULT_FILE="${RUNNER_TEMP}/deployment-failed.json"
 
-          gh api             --method DELETE             "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels/deployment:ready"             > /dev/null 2>&1             || true
+          npm run transition:task-state --             --mode failed             --issue-number "$ISSUE_NUMBER"             --task-id "$TASK_ID"             --merge-sha "$MERGE_SHA"             --deploy-id "${DEPLOY_ID:-not-found}"             --deploy-url "${DEPLOY_URL:-unknown}"             --deploy-state "${DEPLOY_STATE:-workflow-error}"             --workflow-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"             --response-file "$RESULT_FILE"
 
-          jq -n             '{
-              labels: [
-                "deployment:failed",
-                "state:deployment-review"
-              ]
-            }'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels"                 --input -                 > /dev/null             || true
-
-          gh issue comment "$ISSUE_NUMBER" \
-            --repo "$REPOSITORY" \
-            --body "$(
-              cat <<EOF
-          <!-- juleswhile:netlify-failed -->
-
-          ## Netlify Production Deploy 검증 실패
-
-          \`${TASK_ID:-TASK}\`의 \`main\` 병합 결과를 Production 배포로 확인하지 못했습니다.
-
-          | 항목 | 값 |
-          |---|---|
-          | Merge Commit | \`${MERGE_SHA}\` |
-          | Netlify Deploy | \`${DEPLOY_ID:-not-found}\` |
-          | 상태 | \`${DEPLOY_STATE:-workflow-error}\` |
-          | Workflow Run | ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} |
-
-          Production 장애 여부를 확인하고 Correction 또는 Incident Issue를 생성하십시오.
-
-          $(
-            if [[ -n "$DEPLOY_URL" ]]; then
-              printf '%s\n' "[Deploy 결과 확인](${DEPLOY_URL})"
-            fi
-          )
-          EOF
-            )" \
-            || true
+          jq empty "$RESULT_FILE"
