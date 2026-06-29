@@ -1,7 +1,7 @@
 schema_version: 1
 project_id: juleswhile
 generated_at: '2026-06-27T00:00:00+09:00'
-updated_at: '2026-06-29T07:12:23.489226Z'
+updated_at: '2026-06-29T07:33:33.927099Z'
 defaults:
   approval_policy: reviewer
   risk_level: medium
@@ -482,9 +482,9 @@ tasks:
   title: Complete TASK only after production deployment
   role: developer
   type: bug-fix
-  status: READY
+  status: COMPLETED
   priority: P0
-  enabled: true
+  enabled: false
   objective: Change TASK completion from merge-time completion to production deployment verified
     completion, while preserving exactly one state label and delaying next-TASK evaluation.
   depends_on:
@@ -592,10 +592,133 @@ tasks:
     goal_issue_number: 1
     issue_number: 16
     created_at: '2026-06-29T07:12:23.489226Z'
-    updated_at: '2026-06-29T07:12:23.489226Z'
+    updated_at: '2026-06-29T07:33:33.927099Z'
     created_by: user
     tags:
     - control-plane
     - deployment
     - lifecycle
     - reliability
+- kind: task
+  id: TASK-006
+  title: Make Jules Session creation atomic
+  role: developer
+  type: bug-fix
+  status: READY
+  priority: P0
+  enabled: true
+  objective: Guarantee that one tracked TASK dispatch attempt creates at most one Jules Session,
+    even during Workflow reruns, force execution, partial failures, and delayed evidence recording.
+  depends_on:
+  - TASK-005
+  inputs:
+  - AGENTS.md
+  - PROJECT_GOAL.md
+  - operator-guide.md
+  - GitHub Issue #18
+  - .github/workflows/02-dispatch-jules.yml
+  - ops/scripts/dispatch-jules.ts
+  - ops/scripts/session-dispatch-atomicity.ts
+  - ops/scripts/reconcile-project.ts
+  - ops/tasks/task-index.yaml
+  - ops/state/project-state.json
+  outputs:
+  - .github/workflows/02-dispatch-jules.yml
+  - ops/scripts/dispatch-jules.ts
+  - ops/scripts/session-dispatch-atomicity.ts
+  - ops/scripts/session-dispatch-atomicity.test.ts
+  - ops/scripts/dispatch-workflow-contract.test.ts
+  - ops/tasks/task-index.yaml
+  - ops/state/project-state.json
+  acceptance_criteria:
+  - Live Session creation requires GitHub Actions and the canonical Dispatcher Workflow.
+  - Live Session creation requires a Tracking Issue.
+  - Dispatch attempt keys are deterministic for one GitHub Workflow Run.
+  - Workflow reruns reuse the same dispatch attempt identity.
+  - force never bypasses existing Session evidence.
+  - force never bypasses unresolved Dispatch Intent protection.
+  - A committed quota ledger Session can reconstruct a missing canonical Session marker.
+  - Canonical Session evidence is recorded before the Dispatcher returns success.
+  - The Workflow does not create a second canonical Session comment.
+  - Unknown Jules API outcomes remain blocked until reconciliation.
+  - Dry-run remains available without calling the Jules API.
+  - No real Jules Session is created during validation.
+  - npm run lint passes.
+  - npm run validate:schemas passes.
+  - npm run validate:task-graph passes.
+  - npm run typecheck passes.
+  - npm test passes.
+  - npm run build passes.
+  - npm run ci passes.
+  - git diff --check passes.
+  allowed_paths:
+  - .github/workflows/02-dispatch-jules.yml
+  - ops/scripts/dispatch-jules.ts
+  - ops/scripts/session-dispatch-atomicity.ts
+  - ops/scripts/session-dispatch-atomicity.test.ts
+  - ops/scripts/dispatch-workflow-contract.test.ts
+  - ops/tasks/task-index.yaml
+  - ops/state/project-state.json
+  forbidden_paths:
+  - .github/workflows/01-goal-intake.yml
+  - .github/workflows/03-pr-validation.yml
+  - .github/workflows/04-auto-merge.yml
+  - .github/workflows/05-next-task.yml
+  - .github/workflows/06-reconciler.yml
+  - .github/workflows/07-content-schedule.yml
+  - .github/workflows/08-netlify-status.yml
+  - .github/ISSUE_TEMPLATE/**
+  - .github/pull_request_template.md
+  - ops/schemas/**
+  - package-lock.json
+  - netlify.toml
+  - src/**
+  - content/**
+  forbidden_actions:
+  - Create a real Jules Session during implementation or testing.
+  - Read or print Secret values.
+  - Disable unresolved Dispatch Intent protection.
+  - Allow force to create a duplicate Jules Session.
+  - Enable AUTOMATION_ENABLED.
+  - Enable CONTENT_AUTOMATION_ENABLED.
+  - Change Netlify configuration.
+  - Bypass Pull Request validation.
+  - Directly push generated work to main.
+  - Delete tests or weaken validation gates.
+  validation_commands:
+  - npm run lint
+  - npm run validate:schemas
+  - npm run validate:task-graph
+  - npm run typecheck
+  - npm test
+  - npm run build
+  - npm run ci
+  - git diff --check
+  risk_level: high
+  approval_policy: human
+  parallelizable: false
+  resource_locks:
+  - control-plane
+  - jules-dispatch
+  - session-creation
+  - quota-ledger
+  conflicts_with: []
+  retry_policy:
+    max_corrections: 2
+    timeout_minutes: 90
+  stitch:
+    allowed: false
+    required: false
+    expected_outputs: []
+  metadata:
+    goal_issue_number: 1
+    issue_number: 18
+    created_at: '2026-06-29T07:33:33.927099Z'
+    updated_at: '2026-06-29T07:33:33.927099Z'
+    created_by: user
+    tags:
+    - control-plane
+    - jules
+    - dispatch
+    - atomicity
+    - idempotency

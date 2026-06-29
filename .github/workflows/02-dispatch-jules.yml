@@ -45,6 +45,7 @@ concurrency:
 
 env:
   AUTOMATION_ENABLED: ${{ vars.AUTOMATION_ENABLED || 'false' }}
+  JULES_DISPATCH_WORKFLOW: "02-dispatch-jules"
   JULES_SOURCE_NAME: ${{ vars.JULES_SOURCE_NAME }}
   JULES_MAX_CONCURRENCY: ${{ vars.JULES_MAX_CONCURRENCY || '10' }}
   JULES_DAILY_NEW_TASK_BUDGET: ${{ vars.JULES_DAILY_NEW_TASK_BUDGET || '65' }}
@@ -414,7 +415,7 @@ jobs:
           EOF
             )"
 
-      - name: Record Jules TASK session
+      - name: Finalize Jules TASK running state
         if: >-
           steps.issue.outputs.has_issue == 'true' &&
           steps.dispatch.outputs.dry_run != 'true'
@@ -422,16 +423,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           TRACKING_ISSUE: ${{ steps.issue.outputs.issue_number }}
-          TASK_ID: ${{ steps.dispatch.outputs.task_id }}
-          SESSION_NAME: ${{ steps.dispatch.outputs.session_name }}
-          SESSION_ID: ${{ steps.dispatch.outputs.session_id }}
-          SESSION_URL: ${{ steps.dispatch.outputs.session_url }}
-          SESSION_STATE: ${{ steps.dispatch.outputs.session_state }}
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          for label in             "state:ready"             "state:queued"             "state:dispatching"
+          for label in             "state:ready"             "state:queued"             "state:dispatching"             "state:dry-run"             "state:failed"
           do
             gh api               --method DELETE               "repos/${REPOSITORY}/issues/${TRACKING_ISSUE}/labels/${label}"               > /dev/null 2>&1               || true
           done
@@ -443,41 +439,7 @@ jobs:
               ]
             }'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${TRACKING_ISSUE}/labels"                 --input -                 > /dev/null
 
-          COMMENT_FILE="${RUNNER_TEMP}/task-dispatch-comment.md"
-
-          cat > "$COMMENT_FILE" <<EOF
-          <!-- juleswhile:task-dispatch -->
-
-          ## Jules TASK Dispatch
-
-          \`${TASK_ID}\`를 Jules Session 하나에 전달했습니다.
-
-          | 항목 | 값 |
-          |---|---|
-          | TASK | \`${TASK_ID}\` |
-          | Session | \`${SESSION_NAME}\` |
-          | Session ID | \`${SESSION_ID}\` |
-          | Session 상태 | \`${SESSION_STATE:-QUEUED}\` |
-          | Starting branch | \`main\` |
-          | Automation mode | \`AUTO_CREATE_PR\` |
-
-          $(
-            if [[ -n "$SESSION_URL" ]]; then
-              printf '%s\n' "[Jules Session 열기](${SESSION_URL})"
-            else
-              printf '%s\n' "Session URL은 Jules API 응답에 포함되지 않았습니다."
-            fi
-          )
-
-          하나의 Jules Session은 이 TASK 하나만 처리해야 합니다.
-
-          작업 결과는 임시 브랜치와 Pull Request로 제출되며,
-          CI 검증 전에는 \`main\`에 병합되지 않습니다.
-          EOF
-
-          gh issue comment "$TRACKING_ISSUE" \
-            --repo "$REPOSITORY" \
-            --body-file "$COMMENT_FILE"
+          echo "::notice::Canonical Jules Session marker was already recorded by dispatch-jules.ts."
 
       - name: Write workflow summary
         if: success()
