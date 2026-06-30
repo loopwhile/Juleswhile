@@ -68,12 +68,13 @@ jobs:
             pullRequest.head?.repo?.full_name !== pullRequest.base?.repo?.full_name;
 
           const titlePattern =
-            /^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+|MAINTENANCE|TEMPLATE)\]\s+.+$/;
+            /^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+|MAINTENANCE|TEMPLATE)\]/;
 
           const titleMatch = title.match(titlePattern);
 
           if (!titleMatch) {
             throw new Error(
+              `PR 제목 형식이 잘못되었습니다: "${title}". ` +
               "PR 제목은 [TASK-000], [GOAL-0], [CORRECTION-ID], " +
               "[MAINTENANCE] 또는 [TEMPLATE] 형식으로 시작해야 합니다.",
             );
