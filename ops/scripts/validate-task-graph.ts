@@ -22,6 +22,8 @@ const MAINTENANCE_ID_PATTERN = /^MAINTENANCE$/;
 
 const TEMPLATE_ID_PATTERN = /^TEMPLATE$/;
 
+const DRAFT_ID_PATTERN = /^DRAFT$/;
+
 const COMPLETED_STATUSES = new Set(["COMPLETED", "MERGED"]);
 
 interface CliOptions {
@@ -697,6 +699,8 @@ async function validatePrScope(
 		warnings.push(
 			"Correction PR의 세부 허용 경로는 원본 TASK와 Reviewer가 추가 검증해야 합니다.",
 		);
+	} else if (DRAFT_ID_PATTERN.test(taskId)) {
+		warnings.push("Draft PR validation: 상세 범위 검증을 건너뜁니다.");
 	} else {
 		errors.push(`지원하지 않는 PR 식별자입니다: ${taskId}`);
 	}

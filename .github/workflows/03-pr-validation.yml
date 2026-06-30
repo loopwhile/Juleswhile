@@ -71,13 +71,21 @@ jobs:
             /^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+|MAINTENANCE|TEMPLATE)\]/;
 
           const titleMatch = title.match(titlePattern);
+          const taskId = titleMatch ? titleMatch[1] : "DRAFT";
+          const isMaintenanceOrTemplate =
+            taskId === "MAINTENANCE" || taskId === "TEMPLATE";
 
           if (!titleMatch) {
-            throw new Error(
+            const errorMessage =
               `PR 제목 형식이 잘못되었습니다: "${title}". ` +
               "PR 제목은 [TASK-000], [GOAL-0], [CORRECTION-ID], " +
-              "[MAINTENANCE] 또는 [TEMPLATE] 형식으로 시작해야 합니다.",
-            );
+              "[MAINTENANCE] 또는 [TEMPLATE] 형식으로 시작해야 합니다.";
+
+            if (pullRequest.draft) {
+              console.warn(`::warning::${errorMessage}`);
+            } else {
+              throw new Error(errorMessage);
+            }
           }
 
           if (baseBranch !== "main") {
@@ -86,11 +94,8 @@ jobs:
             );
           }
 
-          const taskId = titleMatch[1];
-          const isMaintenanceOrTemplate =
-            taskId === "MAINTENANCE" || taskId === "TEMPLATE";
-
           if (
+            !pullRequest.draft &&
             !isMaintenanceOrTemplate &&
             !body.includes("<!-- juleswhile:task-pr -->")
           ) {
