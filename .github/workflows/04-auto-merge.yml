@@ -215,7 +215,17 @@ jobs:
             blockers.push(`Base branch is ${state.baseRefName}`);
           }
 
+          const titleMatch = String(state.title || "").match(
+            /^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+|MAINTENANCE|TEMPLATE)\]/,
+          );
+
+          const taskId = titleMatch ? titleMatch[1] : "";
+
+          const isMaintenanceOrTemplate =
+            taskId === "MAINTENANCE" || taskId === "TEMPLATE";
+
           if (
+            !isMaintenanceOrTemplate &&
             !String(state.body || "").includes(
               "<!-- juleswhile:task-pr -->",
             )
@@ -261,12 +271,6 @@ jobs:
           if (state.mergeStateStatus === "DIRTY") {
             blockers.push("Pull Request merge state is DIRTY");
           }
-
-          const titleMatch = String(state.title || "").match(
-            /^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)\]/,
-          );
-
-          const taskId = titleMatch ? titleMatch[1] : "";
 
           if (!taskId) {
             blockers.push("TASK or Goal identifier is missing from title");

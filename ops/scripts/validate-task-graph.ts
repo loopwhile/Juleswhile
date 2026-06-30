@@ -18,6 +18,10 @@ const GOAL_ID_PATTERN = /^GOAL-[0-9]+$/;
 
 const CORRECTION_ID_PATTERN = /^CORRECTION-[A-Z0-9-]+$/;
 
+const MAINTENANCE_ID_PATTERN = /^MAINTENANCE$/;
+
+const TEMPLATE_ID_PATTERN = /^TEMPLATE$/;
+
 const COMPLETED_STATUSES = new Set(["COMPLETED", "MERGED"]);
 
 interface CliOptions {
@@ -646,6 +650,19 @@ async function validatePrScope(
 					`${taskId}: 제어 평면 변경에는 사람 승인 정책이 필요합니다: ${protectedChange.join(", ")}`,
 				);
 			}
+		}
+	} else if (
+		MAINTENANCE_ID_PATTERN.test(taskId) ||
+		TEMPLATE_ID_PATTERN.test(taskId)
+	) {
+		const protectedChange = changedFiles.filter((file) =>
+			protectedPatterns.some((pattern) => matchesPattern(file, pattern)),
+		);
+
+		if (protectedChange.length > 0) {
+			warnings.push(
+				`${taskId}: 제어 평면 변경이 포함되어 있습니다. 사람 승인이 필요합니다.`,
+			);
 		}
 	} else if (GOAL_ID_PATTERN.test(taskId)) {
 		const goalAllowedPatterns = [

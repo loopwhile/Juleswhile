@@ -33,20 +33,65 @@ function getSchemaId(schema: JsonObject, filePath: string): string {
 	return schemaId;
 }
 
+function fail(message: string): never {
+	throw new Error(message);
+}
+
+function requireValue(argv: string[], index: number, flag: string): string {
+	const value = argv[index + 1];
+
+	if (value === undefined || value.startsWith("--")) {
+		fail(`${flag} 옵션에 값이 필요합니다.`);
+	}
+
+	return value;
+}
+
 async function main(): Promise<void> {
-	const goalSchemaPath = "ops/schemas/project-goal.schema.json";
+	let goalSchemaPath = "ops/schemas/project-goal.schema.json";
+	let taskSchemaPath = "ops/schemas/task.schema.json";
+	let stateSchemaPath = "ops/schemas/project-state.schema.json";
+	let taskIndexPath = "ops/tasks/task-index.yaml";
+	let projectStatePath = "ops/state/project-state.json";
 
-	const taskSchemaPath = "ops/schemas/task.schema.json";
+	const argv = process.argv.slice(2);
 
-	const stateSchemaPath = "ops/schemas/project-state.schema.json";
+	for (let index = 0; index < argv.length; index += 1) {
+		const argument = argv[index];
+
+		switch (argument) {
+			case "--goal-schema":
+				goalSchemaPath = requireValue(argv, index, argument);
+				index += 1;
+				break;
+			case "--task-schema":
+				taskSchemaPath = requireValue(argv, index, argument);
+				index += 1;
+				break;
+			case "--state-schema":
+				stateSchemaPath = requireValue(argv, index, argument);
+				index += 1;
+				break;
+			case "--task-index":
+				taskIndexPath = requireValue(argv, index, argument);
+				index += 1;
+				break;
+			case "--project-state":
+				projectStatePath = requireValue(argv, index, argument);
+				index += 1;
+				break;
+			default:
+				fail(`지원하지 않는 옵션입니다: ${argument}`);
+		}
+	}
 
 	const [goalSchema, taskSchema, stateSchema, taskIndexYaml, projectStateJson] =
 		await Promise.all([
 			readJson(goalSchemaPath),
 			readJson(taskSchemaPath),
 			readJson(stateSchemaPath),
-			readFile("ops/tasks/task-index.yaml", "utf8"),
-			readFile("ops/state/project-state.json", "utf8"),
+			readFile(taskIndexPath, "utf8"),
+			readFile(projectStatePath, "utf8"),
 		]);
 
 	const taskIndex = parseYaml(taskIndexYaml) as unknown;
