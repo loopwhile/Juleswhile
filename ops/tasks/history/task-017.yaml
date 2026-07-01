@@ -1,0 +1,165 @@
+tasks:
+  - kind: task
+    id: TASK-017
+    title: Finalize Juleswhile as a clean reusable project template
+    role: solution-architect
+    type: maintenance
+    status: RUNNING
+    priority: P0
+    enabled: true
+    objective: Complete template release hardening, remove project-specific Runtime residue, eliminate recursive Projection and duplicate Incident behavior, and prove clean-room bootstrap operation in a new repository.
+    depends_on:
+      - TASK-016
+    inputs:
+      - PROJECT_GOAL.md
+      - README.md
+      - QUICKSTART.md
+      - AGENTS.md
+      - OPERATOR-GUIDE-*.md
+      - ops/scripts/bootstrap-project.mjs
+      - ops/state/project-state.json
+      - ops/tasks/task-index.yaml
+      - ops/tasks/history/**
+      - .github/workflows/10-runtime-projection-sync.yml
+      - .github/workflows/06-reconciler.yml
+      - .github/ISSUE_TEMPLATE/**
+      - netlify.toml
+    outputs:
+      - ops/scripts/bootstrap-project.mjs
+      - ops/scripts/**
+      - ops/application/**
+      - ops/domain/**
+      - ops/ports/**
+      - ops/infrastructure/**
+      - ops/schemas/**
+      - ops/config/**
+      - ops/state/project-state.json
+      - ops/tasks/task-index.yaml
+      - ops/tasks/history/task-017.yaml
+      - .github/workflows/**
+      - .github/ISSUE_TEMPLATE/**
+      - README.md
+      - QUICKSTART.md
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - OPERATOR-GUIDE-*.md
+      - .gitignore
+      - package.json
+      - package-lock.json
+      - netlify.toml
+      - docs/**
+    acceptance_criteria:
+      - Separate Juleswhile maintenance History from the Runtime state created by a new project bootstrap.
+      - Reset Project Goal, Runtime TASK state, Session evidence, Pull Requests, locks, quota usage, incidents and deployment references.
+      - Replace or remove project-specific repository, Jules Source, Project ID, Smoke Test and Netlify values.
+      - Provide Bootstrap preview or dry-run output before mutation.
+      - Make Bootstrap safe on first execution, repeated execution and retry after interruption.
+      - Refuse execution in an unexpected repository or unsafe working tree.
+      - Never print Secret values or existing user credentials.
+      - Keep project output files out of the Template Git tree under docs.
+      - Create an empty untracked docs directory only as part of Bootstrap.
+      - Prevent semantically identical Projection results from creating commits or Pull Requests.
+      - Prevent Projection maintenance events and commits from recursively creating another maintenance Pull Request.
+      - Preserve one Projection branch and one winning concurrent synchronization operation.
+      - Prevent repeated Duplicate TASK Incidents for the same canonical and duplicate evidence set.
+      - Verify canonical TASK Issues before resolving existing Duplicate Incidents.
+      - Pass clean-room bootstrap validation in a newly initialized temporary repository.
+      - Prove that TASK-001 through TASK-016 and existing Issue, PR, Session, Deploy, Quota and lock evidence do not leak into the new Runtime.
+      - Confirm GitHub Template, default branch, permissions, ruleset, Jules and Netlify setup requirements.
+      - Audit every command block in OPERATOR-GUIDE-01 through OPERATOR-GUIDE-09 against the current repository implementation.
+      - Correct invalid command names, file paths, Environment Variable names and GitHub CLI syntax in the Operator Guides.
+      - Correct the execution order for repository creation, Bootstrap, Jules Source discovery, Secret handling, Preflight and Automation activation.
+      - Keep JULES_API_KEY available until Jules Source discovery is complete and unset it only after all required API operations.
+      - Execute the documented Bootstrap command sequence during clean-room validation without undocumented repair steps.
+      - Keep all managed files within the 500-line Source Size Contract with zero exceptions.
+      - Pass schema, task graph, source-size, supply-chain, lint, typecheck, unit, build and full CI validation.
+      - Close abnormal Incidents only after root-cause and recurrence verification.
+      - Establish an exact verified Template release baseline.
+    allowed_paths:
+      - ops/scripts/**
+      - ops/application/**
+      - ops/domain/**
+      - ops/ports/**
+      - ops/infrastructure/**
+      - ops/schemas/**
+      - ops/config/**
+      - ops/state/project-state.json
+      - ops/tasks/task-index.yaml
+      - ops/tasks/history/task-017.yaml
+      - .github/workflows/**
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - README.md
+      - QUICKSTART.md
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - OPERATOR-GUIDE-*.md
+      - .gitignore
+      - package.json
+      - package-lock.json
+      - netlify.toml
+      - docs/**
+    forbidden_paths:
+      - src/**
+      - content/**
+      - public/**
+      - data/**
+      - secrets/**
+      - .env
+      - .env.*
+    forbidden_actions:
+      - Do not push directly to main.
+      - Do not weaken validation, branch protection or supply-chain checks.
+      - Do not request, read, print or commit Secret values.
+      - Do not close Duplicate Incidents before root-cause verification.
+      - Do not delete Juleswhile maintenance History from the Template source repository.
+      - Do not preserve maintenance History as executable Runtime TASK state after Bootstrap.
+      - Do not create a release tag before verifying the exact merged head.
+      - Do not change user-facing product source, content or public assets.
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run validate:source-size
+      - npm run validate:supply-chain
+      - npm run lint
+      - npm run typecheck
+      - npm run test:unit
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - template-release
+      - bootstrap-contract
+      - runtime-projection
+      - incident-idempotency
+      - repository-contract
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 600
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 198
+      created_at: 2026-07-01T19:54:48Z
+      updated_at: 2026-07-01T19:54:48Z
+      created_by: user
+      tags:
+        - template-release
+        - bootstrap
+        - clean-room
+        - runtime-projection
+        - incident-idempotency
+        - security
+        - operations
+        - operator-guide-command-audit
+      template_id: null
+      instance_key: null
+generated_at: 2026-07-01T19:54:48Z
+updated_at: 2026-07-01T19:54:48Z
