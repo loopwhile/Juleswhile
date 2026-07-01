@@ -34,7 +34,12 @@ export PROJECT_ID="ai-tech-blog"
 export PROJECT_NAME="AI Tech Blog"
 export REPOSITORY="${GITHUB_OWNER}/${PROJECT_ID}"
 
-node ops/scripts/bootstrap-project.mjs
+node ops/scripts/bootstrap-project.mjs --dry-run
+node ops/scripts/bootstrap-project.mjs --apply
+
+# 멱등성 확인: changed=false가 출력되어야 한다.
+node ops/scripts/bootstrap-project.mjs --apply
+
 npm run ci
 git diff --check
 git status
@@ -42,7 +47,8 @@ git status
 
 Bootstrap resets project-specific runtime state:
 
-- Completed Juleswhile construction TASK history is removed.
+- Completed Juleswhile construction TASK History shards are removed.
+- A new empty `ops/tasks/task-history.yaml` Runtime Manifest is created.
 - Reusable TASK templates remain available but disabled.
 - Goal, TASK Issue, Session, PR, lock, and quota evidence is cleared.
 - Project ID, package metadata, and repository coordinates are updated.

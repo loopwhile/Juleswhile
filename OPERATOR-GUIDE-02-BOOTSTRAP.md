@@ -79,7 +79,13 @@ Juleswhile 원본에는 Control Plane과 Production E2E 검증 기록이 들어 
 체크인된 Bootstrap 스크립트를 실행한다. 이 스크립트는 include-aware TASK Manifest를 사용하므로 문서에 별도 초기화 로직을 복제하지 않는다.
 ```bash
 npm ci
-node ops/scripts/bootstrap-project.mjs
+
+node ops/scripts/bootstrap-project.mjs --dry-run
+node ops/scripts/bootstrap-project.mjs --apply
+
+# 멱등성 확인: changed=false가 출력되어야 한다.
+node ops/scripts/bootstrap-project.mjs --apply
+
 npm run ci
 ```
 검증:
@@ -182,11 +188,6 @@ printf '%s' "$JULES_API_KEY" |
 gh secret list \
   --repo "$REPOSITORY"
 ```
-검증 후 로컬 변수 제거:
-```bash
-unset JULES_API_KEY
-```
-Secret 값이 다시 출력되지 않는 것이 정상이다.
 ---
 # 12. Jules Source 확인
 Source 이름을 추측하지 않는다.
@@ -234,6 +235,13 @@ gh api \
     | select(.name == "JULES_SOURCE_NAME")
   '
 ```
+검증 후 로컬 변수 제거:
+```bash
+unset JULES_API_KEY
+unset JULES_SOURCE_NAME
+```
+Secret 값이 다시 출력되지 않는 것이 정상이다.
+
 ---
 # 13. Repository Variables
 초기 안전값:
