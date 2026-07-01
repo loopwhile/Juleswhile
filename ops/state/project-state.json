@@ -146,7 +146,7 @@
     "activeSessions": [],
     "activePullRequests": [],
     "resourceLocks": [],
-    "lastReconciledAt": "2026-07-01T18:34:27.000Z"
+    "lastReconciledAt": "2026-07-01T19:00:04.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -168,23 +168,23 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T18:34:27.000Z",
-    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28539425520"
+    "occurredAt": "2026-07-01T19:00:04.000Z",
+    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28540850316"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T18:34:27.000Z",
+  "updatedAt": "2026-07-01T19:00:04.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T18:34:27.000Z",
-    "generatedAt": "2026-07-01T18:34:27.000Z",
-    "evidenceDigest": "sha256:e03997e0cce7d2deb4c8460ee2b29127e45e9a6278993b4ae656f3f78db2bc6b",
+    "observedAt": "2026-07-01T19:00:04.000Z",
+    "generatedAt": "2026-07-01T19:00:04.000Z",
+    "evidenceDigest": "sha256:d80454fa4e9c3c97d5b49c07bccccd325c3b9eec9acc647800b763cac07b0609",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28539425520",
-    "syncReason": "repository_dispatch",
+    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28540850316",
+    "syncReason": "issues",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
-      "supersededIssues": 2,
+      "supersededIssues": 3,
       "manifestMismatches": 0,
       "issueLifecycleMismatches": 0,
       "sessionLookupErrors": 0
