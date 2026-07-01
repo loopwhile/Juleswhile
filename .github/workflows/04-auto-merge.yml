@@ -319,6 +319,66 @@ jobs:
 
           echo "merge_sha=$(jq -r '.sha' <<<"$RESULT")" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout merged main for TASK transition
+        if: >-
+          steps.merge.outcome == 'success' &&
+          steps.policy.outputs.task_issue_number != ''
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js for TASK transition
+        if: >-
+          steps.merge.outcome == 'success' &&
+          steps.policy.outputs.task_issue_number != ''
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install TASK transition dependencies
+        if: >-
+          steps.merge.outcome == 'success' &&
+          steps.policy.outputs.task_issue_number != ''
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Mark linked TASK Issue as deploying
+        if: >-
+          steps.merge.outcome == 'success' &&
+          steps.policy.outputs.task_issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TASK_ISSUE_NUMBER: ${{ steps.policy.outputs.task_issue_number }}
+          TASK_ID: ${{ steps.policy.outputs.task_id }}
+          PR_NUMBER: ${{ steps.input.outputs.pr_number }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          gh label create "state:deploying" \
+            --repo "$REPOSITORY" \
+            --color "1D76DB" \
+            --description "TASK is waiting for production deployment verification" \
+            --force
+
+          RESULT_FILE="${RUNNER_TEMP}/task-deploying-result.json"
+
+          npm run transition:task-state -- \
+            --mode deploying \
+            --issue-number "$TASK_ISSUE_NUMBER" \
+            --task-id "$TASK_ID" \
+            --merge-sha "$MERGE_SHA" \
+            --pr-number "$PR_NUMBER" \
+            --response-file "$RESULT_FILE"
+
+          jq empty "$RESULT_FILE"
+
       - name: Dispatch merged event
         if: steps.merge.outcome == 'success'
         env:

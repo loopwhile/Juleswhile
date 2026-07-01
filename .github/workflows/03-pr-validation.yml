@@ -291,12 +291,18 @@ jobs:
           fi
 
           if [[ "$RESULT" != "success" ]]; then
-            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:pr-validation-failed -->
+            cat > "${RUNNER_TEMP}/pr-validation-failed.md" <<EOF
+          <!-- juleswhile:pr-validation-failed -->
 
-## Juleswhile PR Validation 실패
+          ## Juleswhile PR Validation 실패
 
-- Commit: \`${HEAD_SHA}\`
-- Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Commit: \`${HEAD_SHA}\`
+          - Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 
-실패한 검증을 삭제하거나 약화하지 마십시오. Jules가 생성한 PR이면 CI Correction Controller가 기존 Jules Session과 Native CI Fixer를 통해 보완을 시도합니다." || true
+          실패한 검증을 삭제하거나 약화하지 마십시오. Jules가 생성한 PR이면 CI Correction Controller가 기존 Jules Session과 Native CI Fixer를 통해 보완을 시도합니다.
+          EOF
+            gh pr comment "$PR_NUMBER" \
+              --repo "$REPOSITORY" \
+              --body-file "${RUNNER_TEMP}/pr-validation-failed.md" \
+              || true
           fi

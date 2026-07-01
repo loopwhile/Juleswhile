@@ -125,11 +125,17 @@ jobs:
 
           if [[ ! "$TASK_ID" =~ ^(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)$ ]]; then
             echo "::notice::This PR is not linked to an executable Jules TASK or Goal"
-            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-unavailable -->
+            cat > "${RUNNER_TEMP}/correction-unavailable.md" <<EOF
+          <!-- juleswhile:correction-unavailable -->
 
-## 자동 Correction 미적용
+          ## 자동 Correction 미적용
 
-이 PR은 실행 가능한 Jules TASK/Goal Session과 연결되지 않았습니다. CI 로그를 확인하여 사람이 수정해야 합니다." || true
+          이 PR은 실행 가능한 Jules TASK/Goal Session과 연결되지 않았습니다. CI 로그를 확인하여 사람이 수정해야 합니다.
+          EOF
+            gh pr comment "$PR_NUMBER" \
+              --repo "$REPOSITORY" \
+              --body-file "${RUNNER_TEMP}/correction-unavailable.md" \
+              || true
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -174,11 +180,17 @@ jobs:
             gh label create "human-decision-required" --repo "$REPOSITORY" --color "D93F0B" --description "Human decision required" --force
             jq -n '{labels:["state:blocked","human-decision-required"]}' \
               | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
-            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-limit -->
+            cat > "${RUNNER_TEMP}/correction-limit.md" <<EOF
+          <!-- juleswhile:correction-limit -->
 
-## 자동 Correction 한도 초과
+          ## 자동 Correction 한도 초과
 
-기존 Jules Session 보완 요청을 \`${ATTEMPTS}/${DEFAULT_MAX_CORRECTIONS}\`회 사용했습니다. 추가 자동 요청을 중단하고 사람 검토로 전환합니다." || true
+          기존 Jules Session 보완 요청을 \`${ATTEMPTS}/${DEFAULT_MAX_CORRECTIONS}\`회 사용했습니다. 추가 자동 요청을 중단하고 사람 검토로 전환합니다.
+          EOF
+            gh pr comment "$PR_NUMBER" \
+              --repo "$REPOSITORY" \
+              --body-file "${RUNNER_TEMP}/correction-limit.md" \
+              || true
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -221,11 +233,17 @@ jobs:
           CURRENT_HEAD_SHA="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
           if [[ "$CURRENT_HEAD_SHA" != "$FAILED_HEAD_SHA" ]]; then
             echo "native_fixed=true" >> "$GITHUB_OUTPUT"
-            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:native-ci-fixer-observed -->
+            cat > "${RUNNER_TEMP}/native-ci-fixer-observed.md" <<EOF
+          <!-- juleswhile:native-ci-fixer-observed -->
 
-## Jules Native CI Fixer 동작 확인
+          ## Jules Native CI Fixer 동작 확인
 
-실패 Commit \`${FAILED_HEAD_SHA}\` 이후 새 Commit \`${CURRENT_HEAD_SHA}\`이 Push되었습니다. 새 PR Validation 결과를 기다립니다." || true
+          실패 Commit \`${FAILED_HEAD_SHA}\` 이후 새 Commit \`${CURRENT_HEAD_SHA}\`이 Push되었습니다. 새 PR Validation 결과를 기다립니다.
+          EOF
+            gh pr comment "$PR_NUMBER" \
+              --repo "$REPOSITORY" \
+              --body-file "${RUNNER_TEMP}/native-ci-fixer-observed.md" \
+              || true
           else
             echo "native_fixed=false" >> "$GITHUB_OUTPUT"
           fi
@@ -250,38 +268,49 @@ jobs:
             gh label create "human-decision-required" --repo "$REPOSITORY" --color "D93F0B" --description "Human decision required" --force
             jq -n '{labels:["human-decision-required"]}' \
               | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
-            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-session-missing -->
+            cat > "${RUNNER_TEMP}/correction-session-missing.md" <<EOF
+          <!-- juleswhile:correction-session-missing -->
 
-## Jules Session 보완 요청 실패
+          ## Jules Session 보완 요청 실패
 
-원본 Jules Session ID 또는 \`JULES_API_KEY\`를 확인할 수 없습니다. Native CI Fixer도 제한 시간 안에 새 Commit을 Push하지 않았으므로 사람 검토가 필요합니다." || true
+          원본 Jules Session ID 또는 \`JULES_API_KEY\`를 확인할 수 없습니다. Native CI Fixer도 제한 시간 안에 새 Commit을 Push하지 않았으므로 사람 검토가 필요합니다.
+          EOF
+            gh pr comment "$PR_NUMBER" \
+              --repo "$REPOSITORY" \
+              --body-file "${RUNNER_TEMP}/correction-session-missing.md" \
+              || true
             exit 1
           fi
 
           PROMPT="$(cat <<EOF
-The Pull Request created by this session failed Juleswhile validation.
+          The Pull Request created by this session failed Juleswhile validation.
 
-Repository: ${GITHUB_REPOSITORY}
-Pull Request: #${PR_NUMBER}
-TASK: ${TASK_ID}
-Failed commit: ${FAILED_HEAD_SHA}
-Failed workflow: ${FAILED_RUN_URL}
-Fallback attempt: ${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}
+          Repository: ${GITHUB_REPOSITORY}
+          Pull Request: #${PR_NUMBER}
+          TASK: ${TASK_ID}
+          Failed commit: ${FAILED_HEAD_SHA}
+          Failed workflow: ${FAILED_RUN_URL}
+          Fallback attempt: ${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}
 
-Inspect the GitHub Actions failure and correct the existing Pull Request. Keep the current TASK scope and allowed paths. Do not create another Pull Request. Do not delete, skip, or weaken tests or validation. Push only the minimum correction to the existing PR branch, run all required validation commands, and report BLOCKED if the failure cannot be fixed safely.
-EOF
+          Inspect the GitHub Actions failure and correct the existing Pull Request. Keep the current TASK scope and allowed paths. Do not create another Pull Request. Do not delete, skip, or weaken tests or validation. Push only the minimum correction to the existing PR branch, run all required validation commands, and report BLOCKED if the failure cannot be fixed safely.
+          EOF
           )"
 
-          gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-fallback -->
+          cat > "${RUNNER_TEMP}/correction-fallback.md" <<EOF
+          <!-- juleswhile:correction-fallback -->
 
-## 기존 Jules Session 보완 요청
+          ## 기존 Jules Session 보완 요청
 
-- Session ID: \`${SESSION_ID}\`
-- Attempt: \`${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}\`
-- Failed commit: \`${FAILED_HEAD_SHA}\`
-- Workflow: ${FAILED_RUN_URL}
+          - Session ID: \`${SESSION_ID}\`
+          - Attempt: \`${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}\`
+          - Failed commit: \`${FAILED_HEAD_SHA}\`
+          - Workflow: ${FAILED_RUN_URL}
 
-Native CI Fixer가 제한 시간 안에 Commit을 Push하지 않아 원본 Session에 보완 메시지를 전송합니다."
+          Native CI Fixer가 제한 시간 안에 Commit을 Push하지 않아 원본 Session에 보완 메시지를 전송합니다.
+          EOF
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file "${RUNNER_TEMP}/correction-fallback.md"
 
           jq -n --arg prompt "$PROMPT" '{prompt:$prompt}' > "${RUNNER_TEMP}/send-message.json"
 
