@@ -122,12 +122,12 @@
     "pausedReason": null
   },
   "taskSummary": {
-    "total": 13,
+    "total": 14,
     "draft": 0,
     "ready": 0,
     "queued": 0,
     "dispatching": 0,
-    "running": 0,
+    "running": 1,
     "prOpened": 0,
     "validating": 0,
     "correcting": 0,
@@ -145,7 +145,26 @@
   "runtime": {
     "activeSessions": [],
     "activePullRequests": [],
-    "resourceLocks": [],
+    "resourceLocks": [
+      {
+        "resource": "control-plane-architecture",
+        "taskId": "TASK-014",
+        "acquiredAt": "2026-07-01T15:39:45Z",
+        "expiresAt": "2026-07-01T19:39:45.000Z"
+      },
+      {
+        "resource": "runtime-projection",
+        "taskId": "TASK-014",
+        "acquiredAt": "2026-07-01T15:39:45Z",
+        "expiresAt": "2026-07-01T19:39:45.000Z"
+      },
+      {
+        "resource": "runtime-reconciler",
+        "taskId": "TASK-014",
+        "acquiredAt": "2026-07-01T15:39:45Z",
+        "expiresAt": "2026-07-01T19:39:45.000Z"
+      }
+    ],
     "lastReconciledAt": "2026-07-01T15:41:04.000Z"
   },
   "quotas": {

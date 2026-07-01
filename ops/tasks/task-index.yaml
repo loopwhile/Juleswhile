@@ -1,7 +1,7 @@
 schema_version: 1
 project_id: juleswhile
 generated_at: 2026-06-27T00:00:00+09:00
-updated_at: 2026-07-01T14:34:33Z
+updated_at: 2026-07-01T15:01:39Z
 defaults:
   approval_policy: reviewer
   risk_level: medium
@@ -13,4 +13,5 @@ includes:
   - task-templates.yaml
   - task-history.yaml
   - history/task-013.yaml
+  - history/task-014.yaml
 tasks: []
