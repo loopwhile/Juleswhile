@@ -124,7 +124,7 @@
   "taskSummary": {
     "total": 15,
     "draft": 0,
-    "ready": 1,
+    "ready": 0,
     "queued": 0,
     "dispatching": 0,
     "running": 0,
@@ -133,7 +133,7 @@
     "correcting": 0,
     "mergeReady": 0,
     "merged": 0,
-    "deploying": 0,
+    "deploying": 1,
     "completed": 14,
     "failed": 0,
     "timeout": 0,
@@ -144,19 +144,34 @@
   },
   "runtime": {
     "activeSessions": [],
-    "activePullRequests": [
+    "activePullRequests": [],
+    "resourceLocks": [
       {
+        "resource": "control-plane-architecture",
         "taskId": "TASK-015",
-        "issueNumber": 117,
-        "number": 122,
-        "url": "https://github.com/loopwhile/Juleswhile/pull/122",
-        "headSha": "3bbc4fcc0935d60b714dab0cf4793a349c425366",
-        "state": "open",
-        "openedAt": "2026-07-01T17:29:24Z"
+        "acquiredAt": "2026-07-01T18:24:48Z",
+        "expiresAt": "2026-07-01T23:24:48.000Z"
+      },
+      {
+        "resource": "jules-dispatcher",
+        "taskId": "TASK-015",
+        "acquiredAt": "2026-07-01T18:24:48Z",
+        "expiresAt": "2026-07-01T23:24:48.000Z"
+      },
+      {
+        "resource": "task-lifecycle",
+        "taskId": "TASK-015",
+        "acquiredAt": "2026-07-01T18:24:48Z",
+        "expiresAt": "2026-07-01T23:24:48.000Z"
+      },
+      {
+        "resource": "task-selector",
+        "taskId": "TASK-015",
+        "acquiredAt": "2026-07-01T18:24:48Z",
+        "expiresAt": "2026-07-01T23:24:48.000Z"
       }
     ],
-    "resourceLocks": [],
-    "lastReconciledAt": "2026-07-01T17:53:50.000Z"
+    "lastReconciledAt": "2026-07-01T18:24:48.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -178,19 +193,19 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T17:53:50.000Z",
-    "runUrl": null
+    "occurredAt": "2026-07-01T18:24:48.000Z",
+    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28538889345"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T17:53:50.000Z",
+  "updatedAt": "2026-07-01T18:24:48.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T17:53:50.000Z",
-    "generatedAt": "2026-07-01T17:53:50.000Z",
-    "evidenceDigest": "sha256:a9feaaea8a90c471ec33882b1c661b71a6e1f8859fad4592ee671269e6a760b3",
+    "observedAt": "2026-07-01T18:24:48.000Z",
+    "generatedAt": "2026-07-01T18:24:48.000Z",
+    "evidenceDigest": "sha256:bba2c5602d23bad51cf6d69b7dbdf97e00e840dbf1d3f0bc08b9a3cdabcfb841",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": null,
-    "syncReason": "task-015-final-human-merge",
+    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28538889345",
+    "syncReason": "pull_request",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
