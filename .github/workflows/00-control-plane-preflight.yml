@@ -28,6 +28,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
+      REQUIRE_NETLIFY: ${{ inputs.require_netlify }}
+      REQUIRE_AUTOMATION_DISABLED: ${{ inputs.require_automation_disabled }}
       JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
       NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
@@ -59,22 +61,26 @@ jobs:
           FAILURES=()
 
           REPO_JSON="$(gh api "repos/${REPOSITORY}")"
+          WORKFLOW_PERMISSIONS_JSON="$(gh api "repos/${REPOSITORY}/actions/permissions/workflow")"
           DEFAULT_BRANCH="$(jq -r '.default_branch' <<<"$REPO_JSON")"
           ALLOW_SQUASH="$(jq -r '.allow_squash_merge' <<<"$REPO_JSON")"
           DELETE_BRANCH="$(jq -r '.delete_branch_on_merge' <<<"$REPO_JSON")"
+          WORKFLOW_PERMISSION="$(jq -r '.default_workflow_permissions' <<<"$WORKFLOW_PERMISSIONS_JSON")"
 
           [[ "$DEFAULT_BRANCH" == "main" ]] || FAILURES+=("default branch must be main")
           [[ "$ALLOW_SQUASH" == "true" ]] || FAILURES+=("squash merge must be enabled")
+          [[ "$DELETE_BRANCH" == "true" ]] || FAILURES+=("delete_branch_on_merge must be enabled")
+          [[ "$WORKFLOW_PERMISSION" == "write" ]] || FAILURES+=("Actions workflow permission must be read/write")
           [[ -n "$JULES_API_KEY" ]] || FAILURES+=("JULES_API_KEY secret is missing")
           [[ "$JULES_SOURCE_NAME" =~ ^sources/ ]] || FAILURES+=("JULES_SOURCE_NAME variable is missing or invalid")
           [[ "$CONTENT_AUTOMATION_ENABLED" == "false" ]] || FAILURES+=("CONTENT_AUTOMATION_ENABLED must remain false during bootstrap")
           [[ "$JULES_MAX_CONCURRENCY" == "1" ]] || FAILURES+=("JULES_MAX_CONCURRENCY must be 1 during bootstrap")
 
-          if [[ "${{ inputs.require_automation_disabled }}" == "true" && "$AUTOMATION_ENABLED" != "false" ]]; then
+          if [[ "$REQUIRE_AUTOMATION_DISABLED" == "true" && "$AUTOMATION_ENABLED" != "false" ]]; then
             FAILURES+=("AUTOMATION_ENABLED must be false during preflight")
           fi
 
-          if [[ "${{ inputs.require_netlify }}" == "true" ]]; then
+          if [[ "$REQUIRE_NETLIFY" == "true" ]]; then
             [[ -n "$NETLIFY_AUTH_TOKEN" ]] || FAILURES+=("NETLIFY_AUTH_TOKEN secret is missing")
             [[ -n "$NETLIFY_SITE_ID" ]] || FAILURES+=("NETLIFY_SITE_ID secret is missing")
             [[ "$NETLIFY_STATUS_ENABLED" == "true" ]] || FAILURES+=("NETLIFY_STATUS_ENABLED must be true")
@@ -82,7 +88,7 @@ jobs:
           fi
 
           REQUIRED_FILES=(
-            AGENTS.md README.md PROJECT_GOAL.md operator-guide.md package.json package-lock.json
+            AGENTS.md README.md PROJECT_GOAL.md QUICKSTART.md operator-guide.md package.json package-lock.json
             .github/workflows/01-goal-intake.yml
             .github/workflows/02-dispatch-jules.yml
             .github/workflows/03-pr-validation.yml
@@ -106,6 +112,7 @@ jobs:
             echo "- Default branch: ${DEFAULT_BRANCH}"
             echo "- Squash merge: ${ALLOW_SQUASH}"
             echo "- Delete branch on merge: ${DELETE_BRANCH}"
+            echo "- Actions default permission: ${WORKFLOW_PERMISSION}"
             echo "- Automation enabled: ${AUTOMATION_ENABLED}"
             echo "- Jules source: ${JULES_SOURCE_NAME:-missing}"
             echo "- Netlify verification: ${NETLIFY_STATUS_ENABLED}"
@@ -131,8 +138,29 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          curl --fail-with-body --silent --show-error --connect-timeout 15 --max-time 45 \
-            -H "x-goog-api-key: ${JULES_API_KEY}" \
-            "https://jules.googleapis.com/v1alpha/sources" \
-            | jq -e --arg source "$JULES_SOURCE_NAME" '.sources[]? | select(.name == $source)' >/dev/null \
-            || { echo "::error::Configured JULES_SOURCE_NAME is not visible to this API key"; exit 1; }
+          PAGE_TOKEN=""
+          FOUND=false
+
+          for _ in {1..100}; do
+            URL="https://jules.googleapis.com/v1alpha/sources?pageSize=100"
+            if [[ -n "$PAGE_TOKEN" ]]; then
+              ENCODED_TOKEN="$(jq -rn --arg value "$PAGE_TOKEN" '$value|@uri')"
+              URL="${URL}&pageToken=${ENCODED_TOKEN}"
+            fi
+
+            RESPONSE="$(curl --fail-with-body --silent --show-error --connect-timeout 15 --max-time 45 \
+              -H "x-goog-api-key: ${JULES_API_KEY}" "$URL")"
+
+            if jq -e --arg source "$JULES_SOURCE_NAME" '.sources[]? | select(.name == $source)' <<<"$RESPONSE" >/dev/null; then
+              FOUND=true
+              break
+            fi
+
+            PAGE_TOKEN="$(jq -r '.nextPageToken // empty' <<<"$RESPONSE")"
+            [[ -n "$PAGE_TOKEN" ]] || break
+          done
+
+          [[ "$FOUND" == "true" ]] || {
+            echo "::error::Configured JULES_SOURCE_NAME is not visible to this API key"
+            exit 1
+          }
