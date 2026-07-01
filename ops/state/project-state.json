@@ -127,14 +127,14 @@
     "ready": 0,
     "queued": 0,
     "dispatching": 0,
-    "running": 1,
+    "running": 0,
     "prOpened": 0,
     "validating": 0,
     "correcting": 0,
     "mergeReady": 0,
     "merged": 0,
     "deploying": 0,
-    "completed": 9,
+    "completed": 10,
     "failed": 0,
     "timeout": 0,
     "retryWait": 0,
@@ -145,21 +145,8 @@
   "runtime": {
     "activeSessions": [],
     "activePullRequests": [],
-    "resourceLocks": [
-      {
-        "resource": "control-plane",
-        "taskId": "TASK-010",
-        "acquiredAt": "2026-07-01T09:00:00Z",
-        "expiresAt": "2026-07-01T11:00:00Z"
-      },
-      {
-        "resource": "template-runtime",
-        "taskId": "TASK-010",
-        "acquiredAt": "2026-07-01T09:00:00Z",
-        "expiresAt": "2026-07-01T11:00:00Z"
-      }
-    ],
-    "lastReconciledAt": "2026-06-29T12:02:01.000Z"
+    "resourceLocks": [],
+    "lastReconciledAt": "2026-07-01T12:29:11.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -177,13 +164,13 @@
     }
   },
   "lastEvent": {
-    "type": "task-started",
-    "source": "user",
-    "taskId": "TASK-010",
-    "issueNumber": 66,
-    "occurredAt": "2026-07-01T09:00:00Z",
-    "runUrl": null
+    "type": "runtime-state-projected",
+    "source": "reconciler",
+    "taskId": null,
+    "issueNumber": null,
+    "occurredAt": "2026-07-01T12:29:11.000Z",
+    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28517548420"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T09:00:00Z"
+  "updatedAt": "2026-07-01T12:29:11.000Z"
 }
