@@ -124,7 +124,7 @@
   "taskSummary": {
     "total": 12,
     "draft": 0,
-    "ready": 1,
+    "ready": 0,
     "queued": 0,
     "dispatching": 0,
     "running": 0,
@@ -133,7 +133,7 @@
     "correcting": 0,
     "mergeReady": 0,
     "merged": 0,
-    "deploying": 0,
+    "deploying": 1,
     "completed": 11,
     "failed": 0,
     "timeout": 0,
@@ -145,8 +145,27 @@
   "runtime": {
     "activeSessions": [],
     "activePullRequests": [],
-    "resourceLocks": [],
-    "lastReconciledAt": "2026-07-01T12:42:51.000Z"
+    "resourceLocks": [
+      {
+        "resource": "control-plane",
+        "taskId": "TASK-012",
+        "acquiredAt": "2026-07-01T13:44:01Z",
+        "expiresAt": "2026-07-01T16:44:01.000Z"
+      },
+      {
+        "resource": "runtime-projection",
+        "taskId": "TASK-012",
+        "acquiredAt": "2026-07-01T13:44:01Z",
+        "expiresAt": "2026-07-01T16:44:01.000Z"
+      },
+      {
+        "resource": "static-dashboard",
+        "taskId": "TASK-012",
+        "acquiredAt": "2026-07-01T13:44:01Z",
+        "expiresAt": "2026-07-01T16:44:01.000Z"
+      }
+    ],
+    "lastReconciledAt": "2026-07-01T13:44:01.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -164,27 +183,27 @@
     }
   },
   "lastEvent": {
-    "type": "task-created",
-    "source": "user",
-    "taskId": "TASK-012",
-    "issueNumber": 75,
-    "occurredAt": "2026-07-01T12:53:48Z",
-    "runUrl": "https://github.com/loopwhile/Juleswhile/issues/75"
+    "type": "runtime-state-projected",
+    "source": "reconciler",
+    "taskId": null,
+    "issueNumber": null,
+    "occurredAt": "2026-07-01T13:44:01.000Z",
+    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28522101271"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T12:53:48Z",
+  "updatedAt": "2026-07-01T13:44:01.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T12:53:48Z",
-    "generatedAt": "2026-07-01T12:53:48Z",
-    "evidenceDigest": "sha256:f55affde0a75a09b9120414ffeee357ebd141b94cbd00a1c11f7e53e7b53d20b",
+    "observedAt": "2026-07-01T13:44:01.000Z",
+    "generatedAt": "2026-07-01T13:44:01.000Z",
+    "evidenceDigest": "sha256:aec472bb4caa4afb189d1be7e733262d66d697006a2b9284e9dab555724bcdf1",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/issues/75",
-    "syncReason": "task-registration",
+    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28522101271",
+    "syncReason": "issues",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
-      "supersededIssues": 0,
+      "supersededIssues": 2,
       "manifestMismatches": 0,
       "issueLifecycleMismatches": 0,
       "sessionLookupErrors": 0
