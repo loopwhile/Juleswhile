@@ -128,12 +128,12 @@
     "queued": 0,
     "dispatching": 0,
     "running": 0,
-    "prOpened": 1,
+    "prOpened": 0,
     "validating": 0,
     "correcting": 0,
     "mergeReady": 0,
     "merged": 0,
-    "deploying": 0,
+    "deploying": 1,
     "completed": 15,
     "failed": 0,
     "timeout": 0,
@@ -145,8 +145,33 @@
   "runtime": {
     "activeSessions": [],
     "activePullRequests": [],
-    "resourceLocks": [],
-    "lastReconciledAt": "2026-07-01T19:31:06.000Z"
+    "resourceLocks": [
+      {
+        "resource": "control-plane-architecture",
+        "taskId": "TASK-016",
+        "acquiredAt": "2026-07-01T19:36:24Z",
+        "expiresAt": "2026-07-02T00:36:24.000Z"
+      },
+      {
+        "resource": "root-documentation",
+        "taskId": "TASK-016",
+        "acquiredAt": "2026-07-01T19:36:24Z",
+        "expiresAt": "2026-07-02T00:36:24.000Z"
+      },
+      {
+        "resource": "task-manifest",
+        "taskId": "TASK-016",
+        "acquiredAt": "2026-07-01T19:36:24Z",
+        "expiresAt": "2026-07-02T00:36:24.000Z"
+      },
+      {
+        "resource": "workflow-contracts",
+        "taskId": "TASK-016",
+        "acquiredAt": "2026-07-01T19:36:24Z",
+        "expiresAt": "2026-07-02T00:36:24.000Z"
+      }
+    ],
+    "lastReconciledAt": "2026-07-01T19:36:24.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -168,23 +193,23 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T19:31:06.000Z",
-    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28542580022"
+    "occurredAt": "2026-07-01T19:36:24.000Z",
+    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28542885988"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T19:31:06.000Z",
+  "updatedAt": "2026-07-01T19:36:24.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T19:31:06.000Z",
-    "generatedAt": "2026-07-01T19:31:06.000Z",
-    "evidenceDigest": "sha256:cd590db08fe4651a96aba3f535dd99b2e87ba1ec94acf8de115635878ab8bb0d",
+    "observedAt": "2026-07-01T19:36:24.000Z",
+    "generatedAt": "2026-07-01T19:36:24.000Z",
+    "evidenceDigest": "sha256:c947e73c6fdb9aa530217e91f643b289831c51c23e18e2019ddb3bcd99969499",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28542580022",
-    "syncReason": "pull_request",
+    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28542885988",
+    "syncReason": "repository_dispatch",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
-      "supersededIssues": 3,
+      "supersededIssues": 2,
       "manifestMismatches": 0,
       "issueLifecycleMismatches": 0,
       "sessionLookupErrors": 0
