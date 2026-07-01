@@ -1,0 +1,417 @@
+name: "10 · Runtime Projection Sync"
+
+on:
+  repository_dispatch:
+    types:
+      - goal_planned
+      - task_queued
+      - task_dispatched
+      - pr_validation_passed
+      - pr_validation_failed
+      - pr_merged
+      - deployment_completed
+      - deployment_failed
+      - reconcile_ready
+
+  issues:
+    types:
+      - labeled
+      - unlabeled
+      - closed
+      - reopened
+
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - closed
+      - reopened
+
+  schedule:
+    - cron: "*/15 * * * *"
+
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: runtime-projection-sync
+  cancel-in-progress: false
+
+env:
+  PROJECTION_BRANCH: automation/runtime-projection
+  PROJECTION_TITLE: "[MAINTENANCE] Synchronize runtime projection"
+  PROJECTION_MARKER: "<!-- juleswhile:runtime-projection-pr -->"
+
+jobs:
+  synchronize:
+    name: Synchronize Runtime Projection
+    if: >-
+      ${{
+        !(
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.ref == 'automation/runtime-projection'
+        ) &&
+        !(
+          github.event_name == 'repository_dispatch' &&
+          github.event.action == 'pr_validation_passed' &&
+          github.event.client_payload.task_id == 'MAINTENANCE'
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Rebuild committed Runtime Projection
+        id: projection
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          WORKFLOW_RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          RESPONSE_FILE="${RUNNER_TEMP}/runtime-projection.json"
+
+          npm run project:state -- \
+            --response-file "$RESPONSE_FILE" \
+            --apply
+
+          CHANGED="$(jq -r '.changed' "$RESPONSE_FILE")"
+
+          if [[ "$CHANGED" != "true" && "$CHANGED" != "false" ]]; then
+            echo "::error::Projection response has an invalid changed value"
+            exit 1
+          fi
+
+          {
+            echo "changed=${CHANGED}"
+            echo "response_file=${RESPONSE_FILE}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Runtime Projection"
+            echo
+            echo '```json'
+            cat "$RESPONSE_FILE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop when Projection is current
+        if: steps.projection.outputs.changed != 'true'
+        shell: bash
+        run: |
+          echo "Runtime Projection is already current."
+
+      - name: Enforce Projection-only change scope
+        id: scope
+        if: steps.projection.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          CHANGED_FILES="${RUNNER_TEMP}/projection-changed-files.txt"
+
+          git diff \
+            --name-only \
+            --diff-filter=ACDMRTUXB \
+            > "$CHANGED_FILES"
+
+          [[ -s "$CHANGED_FILES" ]] || {
+            echo "::error::Projection reported changes but no changed files exist"
+            exit 1
+          }
+
+          while IFS= read -r file; do
+            case "$file" in
+              ops/state/project-state.json)
+                ;;
+              ops/tasks/task-index.yaml)
+                ;;
+              ops/tasks/task-history.yaml)
+                ;;
+              ops/tasks/history/*.yaml)
+                ;;
+              *)
+                echo "::error::Runtime Projection changed a forbidden path: ${file}"
+                exit 1
+                ;;
+            esac
+          done < "$CHANGED_FILES"
+
+          {
+            echo "## Projection changed files"
+            echo
+            sed 's/^/- `/' "$CHANGED_FILES" |
+              sed 's/$/`/'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "changed_files=${CHANGED_FILES}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate projected repository
+        if: steps.projection.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          npm run validate:schemas
+          npm run validate:task-graph
+          npm run ci
+          git diff --check
+
+      - name: Commit and push automation branch
+        id: commit
+        if: steps.projection.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -- \
+            ops/state/project-state.json \
+            ops/tasks
+
+          git diff --cached --quiet && {
+            echo "::error::Projection mutation was not staged"
+            exit 1
+          }
+
+          git commit \
+            -m "chore: synchronize runtime projection"
+
+          git fetch origin \
+            "refs/heads/${PROJECTION_BRANCH}:refs/remotes/origin/${PROJECTION_BRANCH}" \
+            2>/dev/null || true
+
+          gh auth setup-git
+
+          git push \
+            --force-with-lease \
+            origin \
+            "HEAD:refs/heads/${PROJECTION_BRANCH}"
+
+          HEAD_SHA="$(git rev-parse HEAD)"
+
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update the single Projection PR
+        id: pull_request
+        if: steps.projection.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          mapfile -t OPEN_PRS < <(
+            gh pr list \
+              --repo "$REPOSITORY" \
+              --state open \
+              --base main \
+              --head "$PROJECTION_BRANCH" \
+              --json number \
+              --jq '.[].number'
+          )
+
+          PR_COUNT="${#OPEN_PRS[@]}"
+
+          if (( PR_COUNT > 1 )); then
+            echo "::error::Multiple Runtime Projection PRs are open"
+            printf 'PR #%s\n' "${OPEN_PRS[@]}"
+            exit 1
+          fi
+
+          BODY_FILE="${RUNNER_TEMP}/runtime-projection-pr.md"
+
+          cat > "$BODY_FILE" <<EOF
+          ${PROJECTION_MARKER}
+
+          ## Runtime Projection Sync
+
+          This maintenance PR synchronizes authoritative GitHub Runtime evidence into the committed static Projection.
+
+          - Source workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Exact head: \`${HEAD_SHA}\`
+          - Automation branch: \`${PROJECTION_BRANCH}\`
+          - Direct main push: prohibited
+          - Runtime-only TASK fields: \`status\`, \`enabled\`, \`metadata.updated_at\`
+
+          The PR must pass validation and Custom Auto Merge policy.
+          EOF
+
+          if (( PR_COUNT == 0 )); then
+            PR_URL="$(
+              gh pr create \
+                --repo "$REPOSITORY" \
+                --base main \
+                --head "$PROJECTION_BRANCH" \
+                --title "$PROJECTION_TITLE" \
+                --body-file "$BODY_FILE"
+            )"
+
+            PR_NUMBER="${PR_URL##*/}"
+          else
+            PR_NUMBER="${OPEN_PRS[0]}"
+
+            jq -n \
+              --arg title "$PROJECTION_TITLE" \
+              --rawfile body "$BODY_FILE" \
+              '{title:$title,body:$body}' \
+              | gh api \
+                  --method PATCH \
+                  "repos/${REPOSITORY}/pulls/${PR_NUMBER}" \
+                  --input - \
+                  >/dev/null
+          fi
+
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || {
+            echo "::error::Projection PR number is invalid"
+            exit 1
+          }
+
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "pr_url=https://github.com/${REPOSITORY}/pull/${PR_NUMBER}" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Publish exact-head validation evidence
+        if: steps.projection.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pull_request.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          for spec in \
+            'juleswhile:managed|0052CC|Managed by Juleswhile' \
+            'validation:passed|0E8A16|Required validation passed' \
+            'projection:runtime|5319E7|Runtime Projection maintenance PR'; do
+            IFS='|' read -r name color description <<<"$spec"
+
+            gh label create "$name" \
+              --repo "$REPOSITORY" \
+              --color "$color" \
+              --description "$description" \
+              --force
+          done
+
+          for stale_label in validation:failed state:merge-blocked; do
+            ENCODED="$(
+              jq -rn \
+                --arg value "$stale_label" \
+                '$value|@uri'
+            )"
+
+            gh api \
+              --method DELETE \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${ENCODED}" \
+              >/dev/null 2>&1 || true
+          done
+
+          jq -n \
+            '{
+              labels: [
+                "juleswhile:managed",
+                "validation:passed",
+                "projection:runtime"
+              ]
+            }' |
+            gh api \
+              --method POST \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" \
+              --input - \
+              >/dev/null
+
+          EVIDENCE_FILE="${RUNNER_TEMP}/projection-validation-evidence.md"
+
+          {
+            echo '<!-- juleswhile:validation-evidence -->'
+            echo '```text'
+            echo "head_sha: ${HEAD_SHA}"
+            echo 'result: passed'
+            echo "run_url: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo '```'
+            echo
+            echo '<!-- juleswhile:runtime-projection-validation -->'
+          } > "$EVIDENCE_FILE"
+
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file "$EVIDENCE_FILE"
+
+      - name: Dispatch Custom Auto Merge evaluation
+        if: steps.projection.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pull_request.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          jq -n \
+            --arg event_type "pr_validation_passed" \
+            --arg task_id "MAINTENANCE" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --argjson pr_number "$PR_NUMBER" \
+            '{
+              event_type: $event_type,
+              client_payload: {
+                pr_number: $pr_number,
+                task_id: $task_id,
+                task_issue_number: "",
+                goal_issue_number: "",
+                head_sha: $head_sha,
+                run_url: $run_url
+              }
+            }' |
+            gh api \
+              --method POST \
+              "repos/${REPOSITORY}/dispatches" \
+              --input -
+
+          {
+            echo
+            echo "Projection PR: https://github.com/${REPOSITORY}/pull/${PR_NUMBER}"
+            echo
+            echo "Custom Auto Merge evaluation dispatched."
+          } >> "$GITHUB_STEP_SUMMARY"

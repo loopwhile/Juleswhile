@@ -64,6 +64,13 @@ export interface TaskManifest {
 	tasks: TaskContract[];
 }
 
+export interface LoadedTaskManifest {
+	rootPath: string;
+	manifest: TaskManifest;
+	sourceByTaskId: ReadonlyMap<string, string>;
+	files: string[];
+}
+
 function fail(message: string): never {
 	throw new Error(message);
 }
@@ -84,24 +91,44 @@ function normalizeInclude(includePath: string): string {
 	return normalized;
 }
 
-async function readYamlObject(filePath: string): Promise<Record<string, unknown>> {
+async function readYamlObject(
+	filePath: string,
+): Promise<Record<string, unknown>> {
 	const content = await fs.readFile(filePath, "utf8");
 	const parsed = parseYaml(content) as unknown;
 
-	if (
-		typeof parsed !== "object" ||
-		parsed === null ||
-		Array.isArray(parsed)
-	) {
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
 		fail(`${filePath}의 최상위 값은 객체여야 합니다.`);
 	}
 
 	return parsed as Record<string, unknown>;
 }
 
+function registerTaskSources(
+	tasks: TaskContract[],
+	filePath: string,
+	sourceByTaskId: Map<string, string>,
+): void {
+	for (const task of tasks) {
+		if (typeof task.id !== "string" || task.id.trim() === "") {
+			fail(`${filePath}에 ID가 없는 TASK가 있습니다.`);
+		}
+
+		const existingSource = sourceByTaskId.get(task.id);
+
+		if (existingSource) {
+			fail(`중복 TASK ID ${task.id}: ${existingSource}, ${filePath}`);
+		}
+
+		sourceByTaskId.set(task.id, filePath);
+	}
+}
+
 async function loadManifestFile(
 	filePath: string,
 	seen: Set<string>,
+	sourceByTaskId: Map<string, string>,
+	files: Set<string>,
 ): Promise<TaskManifest> {
 	const absolutePath = path.resolve(filePath);
 
@@ -110,9 +137,12 @@ async function loadManifestFile(
 	}
 
 	seen.add(absolutePath);
+	files.add(absolutePath);
 
 	const parsed = await readYamlObject(absolutePath);
+
 	const baseDirectory = path.dirname(absolutePath);
+
 	const includes = Array.isArray(parsed.includes)
 		? parsed.includes.map((includePath) => {
 				if (typeof includePath !== "string") {
@@ -127,12 +157,16 @@ async function loadManifestFile(
 		? (parsed.tasks as TaskContract[])
 		: [];
 
+	registerTaskSources(ownTasks, absolutePath, sourceByTaskId);
+
 	const includedTasks: TaskContract[] = [];
 
 	for (const includePath of includes) {
 		const childManifest = await loadManifestFile(
 			path.join(baseDirectory, includePath),
 			seen,
+			sourceByTaskId,
+			files,
 		);
 
 		includedTasks.push(...childManifest.tasks);
@@ -147,14 +181,37 @@ async function loadManifestFile(
 	};
 }
 
-export async function loadTaskManifest(
+export async function loadTaskManifestWithSources(
 	filePath = "ops/tasks/task-index.yaml",
-): Promise<TaskManifest> {
-	const manifest = await loadManifestFile(filePath, new Set());
+): Promise<LoadedTaskManifest> {
+	const rootPath = path.resolve(filePath);
+	const sourceByTaskId = new Map<string, string>();
+
+	const files = new Set<string>();
+
+	const manifest = await loadManifestFile(
+		rootPath,
+		new Set<string>(),
+		sourceByTaskId,
+		files,
+	);
 
 	if (!Array.isArray(manifest.tasks)) {
 		fail(`${filePath}에 tasks 배열이 없습니다.`);
 	}
 
-	return manifest;
+	return {
+		rootPath,
+		manifest,
+		sourceByTaskId,
+		files: [...files].sort(),
+	};
+}
+
+export async function loadTaskManifest(
+	filePath = "ops/tasks/task-index.yaml",
+): Promise<TaskManifest> {
+	const loaded = await loadTaskManifestWithSources(filePath);
+
+	return loaded.manifest;
 }
