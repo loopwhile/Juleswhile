@@ -150,13 +150,13 @@
         "issueNumber": 117,
         "number": 122,
         "url": "https://github.com/loopwhile/Juleswhile/pull/122",
-        "headSha": "b9cbacdc704f76019a29a6781c695d0066ec28db",
+        "headSha": "abcc2a74e260158cbc754b8e8f9736237f62aab0",
         "state": "open",
         "openedAt": "2026-07-01T17:29:24Z"
       }
     ],
     "resourceLocks": [],
-    "lastReconciledAt": "2026-07-01T17:40:55.000Z"
+    "lastReconciledAt": "2026-07-01T17:42:16.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -178,19 +178,19 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T17:40:55.000Z",
+    "occurredAt": "2026-07-01T17:42:16.000Z",
     "runUrl": null
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T17:40:55.000Z",
+  "updatedAt": "2026-07-01T17:42:16.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T17:40:55.000Z",
-    "generatedAt": "2026-07-01T17:40:55.000Z",
-    "evidenceDigest": "sha256:d7c864a735b6bee2cdb43e7316e996805e4ad5df69738f58aa3d58712bd12e14",
+    "observedAt": "2026-07-01T17:42:16.000Z",
+    "generatedAt": "2026-07-01T17:42:16.000Z",
+    "evidenceDigest": "sha256:4415687aec2c0c93b100f97a955cfa00826529419c873dd6b8b8421176e51816",
     "source": "github-runtime-evidence",
     "workflowRunUrl": null,
-    "syncReason": "task-015-main-integration",
+    "syncReason": "task-015-final-main-integration",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
