@@ -127,14 +127,14 @@
     "ready": 0,
     "queued": 0,
     "dispatching": 0,
-    "running": 1,
+    "running": 0,
     "prOpened": 0,
     "validating": 0,
     "correcting": 0,
     "mergeReady": 0,
     "merged": 0,
     "deploying": 0,
-    "completed": 16,
+    "completed": 17,
     "failed": 0,
     "timeout": 0,
     "retryWait": 0,
@@ -145,39 +145,8 @@
   "runtime": {
     "activeSessions": [],
     "activePullRequests": [],
-    "resourceLocks": [
-      {
-        "resource": "template-release",
-        "taskId": "TASK-017",
-        "acquiredAt": "2026-07-01T19:58:20Z",
-        "expiresAt": "2026-07-02T05:58:20Z"
-      },
-      {
-        "resource": "bootstrap-contract",
-        "taskId": "TASK-017",
-        "acquiredAt": "2026-07-01T19:58:20Z",
-        "expiresAt": "2026-07-02T05:58:20Z"
-      },
-      {
-        "resource": "runtime-projection",
-        "taskId": "TASK-017",
-        "acquiredAt": "2026-07-01T19:58:20Z",
-        "expiresAt": "2026-07-02T05:58:20Z"
-      },
-      {
-        "resource": "incident-idempotency",
-        "taskId": "TASK-017",
-        "acquiredAt": "2026-07-01T19:58:20Z",
-        "expiresAt": "2026-07-02T05:58:20Z"
-      },
-      {
-        "resource": "repository-contract",
-        "taskId": "TASK-017",
-        "acquiredAt": "2026-07-01T19:58:20Z",
-        "expiresAt": "2026-07-02T05:58:20Z"
-      }
-    ],
-    "lastReconciledAt": "2026-07-01T19:37:16.000Z"
+    "resourceLocks": [],
+    "lastReconciledAt": "2026-07-01T21:27:22.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -195,23 +164,23 @@
     }
   },
   "lastEvent": {
-    "type": "task-started",
-    "source": "user",
-    "taskId": "TASK-017",
-    "issueNumber": 198,
-    "occurredAt": "2026-07-01T19:58:20Z",
-    "runUrl": "https://github.com/loopwhile/Juleswhile/issues/198"
+    "type": "runtime-state-projected",
+    "source": "reconciler",
+    "taskId": null,
+    "issueNumber": null,
+    "occurredAt": "2026-07-01T21:27:22.000Z",
+    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28549084524"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T19:58:20Z",
+  "updatedAt": "2026-07-01T21:27:22.000Z",
   "projection": {
-    "status": "stale",
-    "observedAt": "2026-07-01T19:37:16.000Z",
-    "generatedAt": "2026-07-01T19:58:20Z",
-    "evidenceDigest": "sha256:aed860019771b23d8549c169cbdae8e2897aee98ab13b10e24f1815c82578df6",
+    "status": "current",
+    "observedAt": "2026-07-01T21:27:22.000Z",
+    "generatedAt": "2026-07-01T21:27:22.000Z",
+    "evidenceDigest": "sha256:6de305b09245b58846229e29849c6e3737ea5ace4cdd3f34ba7590e7cb8e2bab",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28542933702",
-    "syncReason": "task-017-registration-pending-runtime-label",
+    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28549084524",
+    "syncReason": "workflow_dispatch",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,

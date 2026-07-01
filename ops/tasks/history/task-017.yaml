@@ -4,9 +4,9 @@ tasks:
     title: Finalize Juleswhile as a clean reusable project template
     role: solution-architect
     type: maintenance
-    status: RUNNING
+    status: COMPLETED
     priority: P0
-    enabled: true
+    enabled: false
     objective: Complete template release hardening, remove project-specific Runtime residue, eliminate recursive Projection and duplicate Incident behavior, and prove clean-room bootstrap operation in a new repository.
     depends_on:
       - TASK-016
@@ -148,7 +148,7 @@ tasks:
       goal_issue_number: 1
       issue_number: 198
       created_at: 2026-07-01T19:54:48Z
-      updated_at: 2026-07-01T19:54:48Z
+      updated_at: 2026-07-01T21:27:22.000Z
       created_by: user
       tags:
         - template-release
