@@ -168,8 +168,7 @@ cd "$PROJECT_DIR"
 ```bash
 rm -rf .git
 
-git init
-git branch -M main
+git init -b main
 ```
 
 확인:
@@ -205,186 +204,12 @@ Juleswhile 원본에는 Control Plane과 Production E2E 검증 기록이 들어 
 * Production Pilot 보고서
 * Package 이름
 
-직접 터미널에 `source`하지 말고 스크립트 파일로 실행한다.
+체크인된 Bootstrap 스크립트를 실행한다. 이 스크립트는 include-aware TASK Manifest를 사용하므로 문서에 별도 초기화 로직을 복제하지 않는다.
 
 ```bash
-cat > /tmp/bootstrap-juleswhile-project.sh <<'BASH'
-#!/usr/bin/env bash
-
-set -Eeuo pipefail
-
-: "${PROJECT_ID:?PROJECT_ID is required}"
-: "${PROJECT_NAME:?PROJECT_NAME is required}"
-: "${GITHUB_OWNER:?GITHUB_OWNER is required}"
-: "${GITHUB_REPO:?GITHUB_REPO is required}"
-: "${REPOSITORY:?REPOSITORY is required}"
-
-node <<'NODE'
-import {
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
-
-import {
-  parse,
-  stringify,
-} from "yaml";
-
-const now = new Date().toISOString();
-
-const {
-  PROJECT_ID: projectId,
-  PROJECT_NAME: projectName,
-  GITHUB_OWNER: owner,
-  GITHUB_REPO: repo,
-  REPOSITORY: repository,
-} = process.env;
-
-const taskPath = "ops/tasks/task-index.yaml";
-
-const taskIndex = parse(
-  readFileSync(taskPath, "utf8"),
-);
-
-const templates = (taskIndex.tasks ?? [])
-  .filter((task) => task.kind === "template")
-  .map((task) => ({
-    ...task,
-    status: "TEMPLATE",
-    enabled: false,
-    metadata: {
-      ...(task.metadata ?? {}),
-      goal_issue_number: null,
-      issue_number: null,
-      updated_at: now,
-    },
-  }));
-
-taskIndex.project_id = projectId;
-taskIndex.generated_at = now;
-taskIndex.updated_at = now;
-taskIndex.tasks = templates;
-
-writeFileSync(
-  taskPath,
-  stringify(taskIndex, {
-    lineWidth: 100,
-  }),
-  "utf8",
-);
-
-const statePath =
-  "ops/state/project-state.json";
-
-const state = JSON.parse(
-  readFileSync(statePath, "utf8"),
-);
-
-state.projectId = projectId;
-state.status = "bootstrap";
-state.phase = "bootstrap";
-state.primaryBranch = "main";
-
-state.repository = {
-  fullName: repository,
-  htmlUrl:
-    `https://github.com/${owner}/${repo}`,
-  julesSourceName: null,
-};
-
-state.projectGoal = null;
-
-state.automation = {
-  enabled: false,
-  contentEnabled: false,
-  netlifyStatusEnabled: true,
-  mode: "guarded",
-  pausedReason:
-    "Initial bootstrap. Enable automation only after GitHub, Jules and Netlify validation.",
-};
-
-state.taskSummary = {
-  total: 0,
-  draft: 0,
-  ready: 0,
-  queued: 0,
-  dispatching: 0,
-  running: 0,
-  prOpened: 0,
-  validating: 0,
-  correcting: 0,
-  mergeReady: 0,
-  merged: 0,
-  deploying: 0,
-  completed: 0,
-  failed: 0,
-  timeout: 0,
-  retryWait: 0,
-  blocked: 0,
-  cancelled: 0,
-  templates: templates.length,
-};
-
-state.runtime = {
-  activeSessions: [],
-  activePullRequests: [],
-  resourceLocks: [],
-  lastReconciledAt: null,
-};
-
-state.quotas.date = null;
-state.quotas.maxConcurrent = 1;
-state.quotas.used = {
-  newTasks: 0,
-  corrections: 0,
-  maintenance: 0,
-  total: 0,
-};
-
-state.lastEvent = null;
-state.createdAt = now;
-state.updatedAt = now;
-
-writeFileSync(
-  statePath,
-  `${JSON.stringify(state, null, 2)}\n`,
-  "utf8",
-);
-
-const packagePath = "package.json";
-
-const packageJson = JSON.parse(
-  readFileSync(packagePath, "utf8"),
-);
-
-packageJson.name = projectId;
-packageJson.description =
-  `${projectName} project powered by Juleswhile.`;
-
-writeFileSync(
-  packagePath,
-  `${JSON.stringify(packageJson, null, 2)}\n`,
-  "utf8",
-);
-NODE
-
-rm -f \
-  docs/01_overview/juleswhile-smoke-test.md \
-  docs/01_overview/juleswhile-smoke-test-result.md \
-  docs/07_operations/live-jules-pilot-2026-06-29.md
-
-rm -rf dist
-
 npm ci
+node ops/scripts/bootstrap-project.mjs
 npm run ci
-
-echo
-echo "Bootstrap reset completed."
-BASH
-
-chmod +x /tmp/bootstrap-juleswhile-project.sh
-
-bash /tmp/bootstrap-juleswhile-project.sh
 ```
 
 검증:
@@ -400,7 +225,7 @@ npm run validate:task-graph
 
 ```text
 tasks: 0
-templates: 1
+templates: 5
 ready: 0
 blocked: 0
 ```

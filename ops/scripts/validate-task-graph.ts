@@ -5,7 +5,8 @@ import path from "node:path";
 import process from "node:process";
 
 import { minimatch } from "minimatch";
-import { parse as parseYaml } from "yaml";
+
+import { loadTaskManifest } from "./task-manifest.js";
 
 const DEFAULT_TASK_INDEX = "ops/tasks/task-index.yaml";
 
@@ -201,9 +202,9 @@ function parseArguments(argv: string[]): CliOptions {
 }
 
 async function readTaskIndex(filePath: string): Promise<TaskIndex> {
-	const content = await fs.readFile(filePath, "utf8");
-
-	const parsed = parseYaml(content) as TaskIndex;
+	const parsed = (await loadTaskManifest(
+		filePath,
+	)) as unknown as TaskIndex;
 
 	if (!Array.isArray(parsed.tasks)) {
 		fail(`${filePath}에 tasks 배열이 없습니다.`);

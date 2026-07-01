@@ -35,6 +35,15 @@
     "defaults": {
       "$ref": "#/$defs/taskDefaults"
     },
+    "includes": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/pathPattern"
+      }
+    },
     "tasks": {
       "type": "array",
       "maxItems": 10000,

@@ -5,7 +5,8 @@ import process from "node:process";
 
 import addFormatsImport from "ajv-formats";
 import Ajv2020Import from "ajv/dist/2020.js";
-import { parse as parseYaml } from "yaml";
+
+import { loadTaskManifest } from "./task-manifest.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -85,16 +86,14 @@ async function main(): Promise<void> {
 		}
 	}
 
-	const [goalSchema, taskSchema, stateSchema, taskIndexYaml, projectStateJson] =
+	const [goalSchema, taskSchema, stateSchema, taskIndex, projectStateJson] =
 		await Promise.all([
 			readJson(goalSchemaPath),
 			readJson(taskSchemaPath),
 			readJson(stateSchemaPath),
-			readFile(taskIndexPath, "utf8"),
+			loadTaskManifest(taskIndexPath),
 			readFile(projectStatePath, "utf8"),
 		]);
-
-	const taskIndex = parseYaml(taskIndexYaml) as unknown;
 
 	const projectState = JSON.parse(projectStateJson) as unknown;
 

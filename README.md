@@ -42,12 +42,13 @@ State Authority:      GitHub Issues and Pull Requests
 현재 저장소의 구축 검증 TASK는 다음 상태다.
 
 ```text
-TASK total:       9
+TASK total:       10
 TASK completed:   9
-TASK ready:       0
+TASK running:     1
+TASK templates:   5
 Active Sessions:  0
 Active PRs:       0
-Resource Locks:   0
+Resource Locks:   2
 ```
 
 ---
@@ -161,7 +162,9 @@ Netlify Production 배포가 확인된 뒤 TASK Issue를 `state:completed`로 �
 
 ### `ops/tasks/task-index.yaml`
 
-TASK 계약과 의존성 그래프의 committed Manifest다.
+TASK 계약과 의존성 그래프의 committed root Manifest다.
+
+Root Manifest는 `includes`를 통해 `ops/tasks/task-templates.yaml`와 `ops/tasks/task-history.yaml`를 병합한다. 스크립트는 `ops/scripts/task-manifest.ts`의 include-aware loader를 통해 TASK 데이터를 읽는다.
 
 ### `ops/state/project-state.json`
 
@@ -200,7 +203,9 @@ GitHub Runtime 증거를 기반으로 생성한 committed Projection이다.
 │   ├── state/
 │   │   └── project-state.json
 │   └── tasks/
-│       └── task-index.yaml
+│       ├── task-history.yaml
+│       ├── task-index.yaml
+│       └── task-templates.yaml
 ├── AGENTS.md
 ├── PROJECT_GOAL.md
 ├── README.md
@@ -212,7 +217,7 @@ GitHub Runtime 증거를 기반으로 생성한 committed Projection이다.
 
 ## 새 프로젝트 빠른 시작
 
-전체 절차는 [`operator-guide.md`](operator-guide.md)를 따른다.
+정식 절차는 [`QUICKSTART.md`](QUICKSTART.md)를 따른다. 핵심 경로는 `git clone -> rm -rf .git -> git init -b main -> node ops/scripts/bootstrap-project.mjs -> 최초 main seed push`다.
 
 ### 1. 환경값 결정
 
@@ -249,8 +254,7 @@ cd "$PROJECT_DIR"
 ```bash
 rm -rf .git
 
-git init
-git branch -M main
+git init -b main
 ```
 
 ### 4. Bootstrap 초기화
@@ -270,7 +274,7 @@ Juleswhile 원본 저장소에는 Production E2E 검증 기록이 포함되어 �
 * Jules Source
 * Package 이름
 
-정확한 초기화 명령은 [`operator-guide.md`](operator-guide.md)의 **Bootstrap 초기화** 절을 사용한다.
+정확한 초기화 명령은 [`QUICKSTART.md`](QUICKSTART.md)의 **Bootstrap The Template Runtime** 절을 사용한다.
 
 ### 5. 새 GitHub 저장소 연결
 

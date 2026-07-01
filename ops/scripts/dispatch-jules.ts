@@ -4,7 +4,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { stringify as stringifyYaml } from "yaml";
 
 import {
   assertLiveDispatchContext,
@@ -14,6 +14,7 @@ import {
   hasCanonicalSessionEvidence,
   parseCommittedSessionEvidence,
 } from "./session-dispatch-atomicity.js";
+import { loadTaskManifest } from "./task-manifest.js";
 
 const TASK_INDEX_PATH = "ops/tasks/task-index.yaml";
 const EXECUTE_PROMPT_PATH = "ops/prompts/execute-task.md";
@@ -390,30 +391,15 @@ async function readTextFile(
 }
 
 async function readTaskIndex(): Promise<TaskIndex> {
-  const content = await readTextFile(TASK_INDEX_PATH);
-
-  let parsed: unknown;
-
-  try {
-    parsed = parseYaml(content);
-  } catch (error) {
-    throw new Error(
-      `${TASK_INDEX_PATH} YAML 파싱에 실패했습니다.`,
-      {
-        cause: error,
-      },
-    );
-  }
-
-  if (!isRecord(parsed)) {
-    fail(`${TASK_INDEX_PATH}의 최상위 값은 객체여야 합니다.`);
-  }
+  const parsed = (await loadTaskManifest(
+    TASK_INDEX_PATH,
+  )) as unknown as Partial<TaskIndex>;
 
   if (!Array.isArray(parsed.tasks)) {
     fail(`${TASK_INDEX_PATH}에 tasks 배열이 없습니다.`);
   }
 
-  return parsed as unknown as TaskIndex;
+  return parsed as TaskIndex;
 }
 
 function getTask(

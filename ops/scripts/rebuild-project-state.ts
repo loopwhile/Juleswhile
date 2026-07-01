@@ -6,12 +6,12 @@ import process from "node:process";
 
 import addFormatsImport from "ajv-formats";
 import Ajv2020Import from "ajv/dist/2020.js";
-import { parse as parseYaml } from "yaml";
 
 import {
   JulesApiClient,
   JulesApiError,
 } from "./jules-api.js";
+import { loadTaskManifest } from "./task-manifest.js";
 
 const Ajv2020 = (
   "default" in Ajv2020Import
@@ -556,12 +556,9 @@ async function main(): Promise<void> {
     getRepository();
 
   const taskIndex =
-    parseYaml(
-      await fs.readFile(
-        options.taskIndexPath,
-        "utf8",
-      ),
-    ) as TaskIndex;
+    (await loadTaskManifest(
+      options.taskIndexPath,
+    )) as unknown as TaskIndex;
 
   const currentState =
     JSON.parse(
