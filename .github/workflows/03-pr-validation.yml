@@ -15,7 +15,6 @@ env:
   PR_NUMBER: ${{ github.event.pull_request.number }}
   BASE_SHA: ${{ github.event.pull_request.base.sha }}
   HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-  ALLOW_FORK_PRS: ${{ vars.ALLOW_FORK_PRS || 'false' }}
 
 jobs:
   validate:
@@ -27,226 +26,133 @@ jobs:
       pull-requests: write
       issues: read
     outputs:
-      task_id: ${{ steps.metadata.outputs.task_id }}
-      task_issue_number: ${{ steps.metadata.outputs.task_issue_number }}
-      goal_issue_number: ${{ steps.metadata.outputs.goal_issue_number }}
-      control_plane_change: ${{ steps.scope.outputs.control_plane_change }}
+      task_id: ${{ steps.meta.outputs.task_id }}
+      task_issue: ${{ steps.meta.outputs.task_issue }}
+      goal_issue: ${{ steps.meta.outputs.goal_issue }}
+      control_plane: ${{ steps.scope.outputs.control_plane }}
     steps:
-      - name: Normalize managed PR metadata
-        id: metadata
+      - name: Normalize PR contract
+        id: meta
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          ALLOW_FORK_PRS: ${{ vars.ALLOW_FORK_PRS || 'false' }}
         shell: bash
         run: |
           set -Eeuo pipefail
-
-          PR_JSON="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
-          TITLE="$(jq -r '.title // ""' <<<"$PR_JSON")"
-          BODY="$(jq -r '.body // ""' <<<"$PR_JSON")"
-          BASE="$(jq -r '.base.ref // ""' <<<"$PR_JSON")"
-          HEAD_REPO="$(jq -r '.head.repo.full_name // ""' <<<"$PR_JSON")"
-          BASE_REPO="$(jq -r '.base.repo.full_name // ""' <<<"$PR_JSON")"
-          IS_DRAFT="$(jq -r '.draft // false' <<<"$PR_JSON")"
-
-          [[ "$BASE" == "main" ]] || { echo "::error::PR base must be main"; exit 1; }
-          if [[ "$HEAD_REPO" != "$BASE_REPO" && "$ALLOW_FORK_PRS" != "true" ]]; then
-            echo "::error::Fork PRs are disabled"
-            exit 1
-          fi
-
-          if [[ ! "$TITLE" =~ ^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+|MAINTENANCE|TEMPLATE)\] ]]; then
-            echo "::error::PR title must start with [TASK-000], [GOAL-0], [CORRECTION-ID], [MAINTENANCE], or [TEMPLATE]"
-            exit 1
-          fi
+          PR="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
+          TITLE="$(jq -r '.title // ""' <<<"$PR")"
+          BODY="$(jq -r '.body // ""' <<<"$PR")"
+          BASE="$(jq -r '.base.ref // ""' <<<"$PR")"
+          HEAD_REPO="$(jq -r '.head.repo.full_name // ""' <<<"$PR")"
+          BASE_REPO="$(jq -r '.base.repo.full_name // ""' <<<"$PR")"
+          DRAFT="$(jq -r '.draft // false' <<<"$PR")"
+          [[ "$BASE" == main ]] || { echo "::error::Base branch must be main"; exit 1; }
+          [[ "$HEAD_REPO" == "$BASE_REPO" || "$ALLOW_FORK_PRS" == true ]] || { echo "::error::Fork PRs disabled"; exit 1; }
+          [[ "$TITLE" =~ ^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+|MAINTENANCE|TEMPLATE)\] ]] \
+            || { echo "::error::Invalid managed PR title"; exit 1; }
 
           TASK_ID="${BASH_REMATCH[1]}"
-          TASK_ISSUE_NUMBER=""
-          GOAL_ISSUE_NUMBER=""
-          NORMALIZED_BODY="$BODY"
+          TASK_ISSUE="$(grep -Eio 'TASK Issue:[[:space:]]*(https://github.com/[^/[:space:]]+/[^/[:space:]]+/issues/)?#?[0-9]+' <<<"$BODY" | grep -Eo '[0-9]+$' | head -1 || true)"
+          GOAL_ISSUE="$(grep -Eio 'Goal Issue:[[:space:]]*(https://github.com/[^/[:space:]]+/[^/[:space:]]+/issues/)?#?[0-9]+' <<<"$BODY" | grep -Eo '[0-9]+$' | head -1 || true)"
+          NEXT_BODY="$BODY"
 
-          if [[ "$TASK_ID" =~ ^TASK- ]]; then
-            TASK_ISSUE_NUMBER="$(sed -nE 's/.*TASK Issue:[[:space:]]*(https:\/\/github\.com\/[^/[:space:]]+\/[^/[:space:]]+\/issues\/)?#?([0-9]+).*/\2/ip' <<<"$BODY" | head -1)"
-            if [[ -z "$TASK_ISSUE_NUMBER" ]]; then
-              TASK_ISSUE_NUMBER="$(
-                gh api "repos/${REPOSITORY}/issues?state=all&per_page=100" --paginate \
-                  --jq ".[] | select(.pull_request == null) | select((.title | test(\"${TASK_ID}\"; \"i\")) or ((.body // \"\") | contains(\"juleswhile:task-id:${TASK_ID}\"))) | .number" \
-                  | head -1
-              )"
-            fi
-            [[ "$TASK_ISSUE_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::Canonical TASK Issue not found for ${TASK_ID}"; exit 1; }
-            if [[ "$NORMALIZED_BODY" != *"<!-- juleswhile:task-pr -->"* ]]; then
-              NORMALIZED_BODY="<!-- juleswhile:task-pr -->\n\n${NORMALIZED_BODY}"
-            fi
-            if ! grep -Eqi 'TASK Issue:' <<<"$NORMALIZED_BODY"; then
-              NORMALIZED_BODY="${NORMALIZED_BODY}\n\nTASK Issue: #${TASK_ISSUE_NUMBER}"
-            fi
-          elif [[ "$TASK_ID" =~ ^GOAL- ]]; then
-            GOAL_ISSUE_NUMBER="$(sed -nE 's/.*Goal Issue:[[:space:]]*(https:\/\/github\.com\/[^/[:space:]]+\/[^/[:space:]]+\/issues\/)?#?([0-9]+).*/\2/ip' <<<"$BODY" | head -1)"
-            if [[ -z "$GOAL_ISSUE_NUMBER" ]]; then
-              GOAL_ISSUE_NUMBER="${TASK_ID#GOAL-}"
-            fi
-            [[ "$GOAL_ISSUE_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::Goal Issue reference is invalid"; exit 1; }
-            if [[ "$NORMALIZED_BODY" != *"<!-- juleswhile:task-pr -->"* ]]; then
-              NORMALIZED_BODY="<!-- juleswhile:task-pr -->\n\n${NORMALIZED_BODY}"
-            fi
-            if ! grep -Eqi 'Goal Issue:' <<<"$NORMALIZED_BODY"; then
-              NORMALIZED_BODY="${NORMALIZED_BODY}\n\nGoal Issue: #${GOAL_ISSUE_NUMBER}"
-            fi
+          if [[ "$TASK_ID" =~ ^TASK- && -z "$TASK_ISSUE" ]]; then
+            TASK_ISSUE="$(gh api "repos/${REPOSITORY}/issues?state=all&per_page=100" --paginate \
+              --jq ".[] | select(.pull_request == null) | select((.title | test(\"${TASK_ID}\";\"i\")) or ((.body // \"\") | contains(\"juleswhile:task-id:${TASK_ID}\"))) | .number" | head -1)"
+            [[ "$TASK_ISSUE" =~ ^[0-9]+$ ]] || { echo "::error::Canonical TASK Issue not found"; exit 1; }
           fi
+          if [[ "$TASK_ID" =~ ^GOAL- && -z "$GOAL_ISSUE" ]]; then GOAL_ISSUE="${TASK_ID#GOAL-}"; fi
 
-          if [[ "$NORMALIZED_BODY" != "$BODY" || "$IS_DRAFT" == "true" ]]; then
-            jq -n --arg body "$NORMALIZED_BODY" '{body:$body,draft:false}' \
+          if [[ "$TASK_ID" =~ ^(TASK-|GOAL-) && "$NEXT_BODY" != *"<!-- juleswhile:task-pr -->"* ]]; then
+            NEXT_BODY="<!-- juleswhile:task-pr -->\n\n${NEXT_BODY}"
+          fi
+          if [[ "$TASK_ID" =~ ^TASK- ]] && ! grep -Eqi 'TASK Issue:' <<<"$NEXT_BODY"; then NEXT_BODY="${NEXT_BODY}\n\nTASK Issue: #${TASK_ISSUE}"; fi
+          if [[ "$TASK_ID" =~ ^GOAL- ]] && ! grep -Eqi 'Goal Issue:' <<<"$NEXT_BODY"; then NEXT_BODY="${NEXT_BODY}\n\nGoal Issue: #${GOAL_ISSUE}"; fi
+
+          if [[ "$NEXT_BODY" != "$BODY" || "$DRAFT" == true ]]; then
+            jq -n --arg body "$NEXT_BODY" '{body:$body,draft:false}' \
               | gh api --method PATCH "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --input - >/dev/null
           fi
-
           {
             echo "task_id=${TASK_ID}"
-            echo "task_issue_number=${TASK_ISSUE_NUMBER}"
-            echo "goal_issue_number=${GOAL_ISSUE_NUMBER}"
+            echo "task_issue=${TASK_ISSUE}"
+            echo "goal_issue=${GOAL_ISSUE}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Checkout PR head
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Detect changed files
+      - name: Detect scope
         id: scope
         shell: bash
         run: |
           set -Eeuo pipefail
-          CHANGED_FILES="${RUNNER_TEMP}/changed-files.txt"
-          git diff --name-only --diff-filter=ACDMRTUXB "$BASE_SHA" "$HEAD_SHA" | sed '/^[[:space:]]*$/d' | sort -u > "$CHANGED_FILES"
-          [[ -s "$CHANGED_FILES" ]] || { echo "::error::No changed files"; exit 1; }
-          CONTROL_PLANE_CHANGE=false
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | sed '/^$/d' | sort -u > "${RUNNER_TEMP}/files.txt"
+          [[ -s "${RUNNER_TEMP}/files.txt" ]] || { echo "::error::No changed files"; exit 1; }
+          CONTROL=false
           while IFS= read -r file; do
-            case "$file" in
-              AGENTS.md|.github/*|ops/schemas/*|ops/scripts/*|package.json|package-lock.json|netlify.toml)
-                CONTROL_PLANE_CHANGE=true ;;
-            esac
-          done < "$CHANGED_FILES"
-          echo "control_plane_change=${CONTROL_PLANE_CHANGE}" >> "$GITHUB_OUTPUT"
+            case "$file" in AGENTS.md|.github/*|ops/schemas/*|ops/scripts/*|package.json|package-lock.json|netlify.toml) CONTROL=true;; esac
+          done < "${RUNNER_TEMP}/files.txt"
+          echo "control_plane=${CONTROL}" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          if [[ -f package-lock.json ]]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
-
-      - name: Validate required files and scripts
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          for file in AGENTS.md README.md PROJECT_GOAL.md package.json ops/tasks/task-index.yaml ops/state/project-state.json ops/scripts/validate-task-graph.ts; do
-            [[ -f "$file" ]] || { echo "::error::Missing required file: $file"; exit 1; }
-          done
-          for script in validate:schemas validate:task-graph validate:pr-scope; do
-            jq -e --arg script "$script" '.scripts[$script] | type == "string"' package.json >/dev/null \
-              || { echo "::error::Missing package script: $script"; exit 1; }
-          done
-
-      - name: Validate project and TASK scope
+      - name: Run required validation
         env:
-          TASK_ID: ${{ steps.metadata.outputs.task_id }}
+          TASK_ID: ${{ steps.meta.outputs.task_id }}
         shell: bash
         run: |
           set -Eeuo pipefail
+          npm ci --no-audit --no-fund
           npm run validate:schemas
           npm run validate:task-graph
-          npm run validate:pr-scope -- \
-            --task-id "$TASK_ID" \
-            --change-list "${RUNNER_TEMP}/changed-files.txt" \
-            --base-sha "$BASE_SHA" \
-            --head-sha "$HEAD_SHA"
+          npm run validate:pr-scope -- --task-id "$TASK_ID" --change-list "${RUNNER_TEMP}/files.txt" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
           for script in validate:supply-chain lint typecheck test build; do
-            if jq -e --arg script "$script" '.scripts[$script] | type == "string"' package.json >/dev/null; then
-              npm run "$script"
-            fi
+            jq -e --arg s "$script" '.scripts[$s] | type == "string"' package.json >/dev/null && npm run "$script" || true
           done
           git diff --check "$BASE_SHA" "$HEAD_SHA"
           npx tsx ops/scripts/verify-repository-integrity.ts --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
 
-  publish-result:
-    name: Publish validation event
+  publish:
+    name: Publish validation result
     if: always()
     needs: [validate]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
       issues: write
     steps:
-      - name: Apply labels and dispatch controller event
+      - name: Label and dispatch
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           RESULT: ${{ needs.validate.result }}
           TASK_ID: ${{ needs.validate.outputs.task_id }}
-          TASK_ISSUE_NUMBER: ${{ needs.validate.outputs.task_issue_number }}
-          GOAL_ISSUE_NUMBER: ${{ needs.validate.outputs.goal_issue_number }}
-          CONTROL_PLANE_CHANGE: ${{ needs.validate.outputs.control_plane_change }}
+          TASK_ISSUE: ${{ needs.validate.outputs.task_issue }}
+          GOAL_ISSUE: ${{ needs.validate.outputs.goal_issue }}
+          CONTROL: ${{ needs.validate.outputs.control_plane }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          for spec in \
-            'juleswhile:managed|0052CC|Managed by Juleswhile' \
-            'validation:passed|0E8A16|Required validation passed' \
-            'validation:failed|D73A4A|Required validation failed' \
-            'risk:control-plane|B60205|Control-plane change' \
-            'human-approval-required|D93F0B|Human approval required'; do
-            IFS='|' read -r name color description <<<"$spec"
-            gh label create "$name" --repo "$REPOSITORY" --color "$color" --description "$description" --force
+          for spec in 'juleswhile:managed|0052CC' 'validation:passed|0E8A16' 'validation:failed|D73A4A' 'risk:control-plane|B60205' 'human-approval-required|D93F0B'; do
+            IFS='|' read -r name color <<<"$spec"; gh label create "$name" --repo "$REPOSITORY" --color "$color" --force
           done
-
-          for label in validation:passed validation:failed; do
-            gh api --method DELETE "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${label}" >/dev/null 2>&1 || true
-          done
-
-          if [[ "$RESULT" == "success" ]]; then
-            RESULT_LABEL=validation:passed
-            EVENT_TYPE=pr_validation_passed
-          else
-            RESULT_LABEL=validation:failed
-            EVENT_TYPE=pr_validation_failed
-          fi
-
-          jq -n --arg label "$RESULT_LABEL" '{labels:[$label]}' \
-            | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
-
-          if [[ "$CONTROL_PLANE_CHANGE" == "true" ]]; then
-            jq -n '{labels:["risk:control-plane","human-approval-required"]}' \
-              | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
-          fi
-
-          jq -n \
-            --arg event_type "$EVENT_TYPE" \
-            --arg task_id "$TASK_ID" \
-            --arg task_issue_number "$TASK_ISSUE_NUMBER" \
-            --arg goal_issue_number "$GOAL_ISSUE_NUMBER" \
-            --arg head_sha "$HEAD_SHA" \
-            --arg run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            --argjson pr_number "$PR_NUMBER" \
-            '{event_type:$event_type,client_payload:{pr_number:$pr_number,task_id:$task_id,task_issue_number:$task_issue_number,goal_issue_number:$goal_issue_number,head_sha:$head_sha,run_url:$run_url}}' \
+          for label in validation:passed validation:failed; do gh api --method DELETE "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${label}" >/dev/null 2>&1 || true; done
+          if [[ "$RESULT" == success ]]; then LABEL=validation:passed; EVENT=pr_validation_passed; else LABEL=validation:failed; EVENT=pr_validation_failed; fi
+          jq -n --arg l "$LABEL" '{labels:[$l]}' | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
+          if [[ "$CONTROL" == true ]]; then jq -n '{labels:["risk:control-plane","human-approval-required"]}' | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null; fi
+          jq -n --arg event "$EVENT" --arg task "$TASK_ID" --arg task_issue "$TASK_ISSUE" --arg goal_issue "$GOAL_ISSUE" --arg sha "$HEAD_SHA" --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --argjson pr "$PR_NUMBER" \
+            '{event_type:$event,client_payload:{pr_number:$pr,task_id:$task,task_issue_number:$task_issue,goal_issue_number:$goal_issue,head_sha:$sha,run_url:$run}}' \
             | gh api --method POST "repos/${REPOSITORY}/dispatches" --input -
+          if [[ "$RESULT" != success ]]; then gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:pr-validation-failed -->
 
-          if [[ "$RESULT" != "success" ]]; then
-            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:pr-validation-failed -->
-
-## Juleswhile PR Validation 실패
-
-- Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-- Commit: \`${HEAD_SHA}\`
-
-자동 Correction Controller가 현재 PR 브랜치를 기준으로 제한된 보완을 요청합니다. 실패 테스트나 검증을 삭제하거나 약화하지 마십시오." || true
-          fi
+Validation failed for \`${HEAD_SHA}\`. Correction Controller will use this PR branch. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" || true; fi
