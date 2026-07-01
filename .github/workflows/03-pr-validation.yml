@@ -14,7 +14,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: pr-validation-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  group: pr-validation-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
@@ -30,13 +30,25 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      issues: read
+      issues: write
     outputs:
       task_id: ${{ steps.meta.outputs.task_id }}
       task_issue: ${{ steps.meta.outputs.task_issue }}
       goal_issue: ${{ steps.meta.outputs.goal_issue }}
       control_plane: ${{ steps.scope.outputs.control_plane }}
     steps:
+      - name: Invalidate stale validation labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for label in validation:passed validation:failed; do
+            ENCODED_LABEL="$(jq -rn --arg value "$label" '$value|@uri')"
+            gh api --method DELETE "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${ENCODED_LABEL}" >/dev/null 2>&1 || true
+          done
+
       - name: Normalize PR contract
         id: meta
         env:
@@ -245,7 +257,8 @@ jobs:
           done
 
           for label in validation:passed validation:failed; do
-            gh api --method DELETE "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${label}" >/dev/null 2>&1 || true
+            ENCODED_LABEL="$(jq -rn --arg value "$label" '$value|@uri')"
+            gh api --method DELETE "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${ENCODED_LABEL}" >/dev/null 2>&1 || true
           done
 
           if [[ "$RESULT" == "success" ]]; then
@@ -273,17 +286,7 @@ jobs:
               --arg head_sha "$HEAD_SHA" \
               --arg run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
               --argjson pr_number "$PR_NUMBER" \
-              '{
-                event_type: $event_type,
-                client_payload: {
-                  pr_number: $pr_number,
-                  task_id: $task_id,
-                  task_issue_number: $task_issue_number,
-                  goal_issue_number: $goal_issue_number,
-                  head_sha: $head_sha,
-                  run_url: $run_url
-                }
-              }' \
+              '{event_type:$event_type,client_payload:{pr_number:$pr_number,task_id:$task_id,task_issue_number:$task_issue_number,goal_issue_number:$goal_issue_number,head_sha:$head_sha,run_url:$run_url}}' \
               | gh api --method POST "repos/${REPOSITORY}/dispatches" --input -
           fi
 
