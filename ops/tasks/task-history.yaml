@@ -1097,9 +1097,9 @@ tasks:
     title: Synchronize runtime evidence to committed projection
     role: developer
     type: maintenance
-    status: RUNNING
+    status: COMPLETED
     priority: P0
-    enabled: true
+    enabled: false
     objective: Synchronize authoritative GitHub Runtime evidence into the owning TASK Manifest include file
       and ops/state/project-state.json through one validated and idempotent Projection operation.
     depends_on:
@@ -1188,7 +1188,7 @@ tasks:
       goal_issue_number: 1
       issue_number: 71
       created_at: 2026-07-01T12:18:58Z
-      updated_at: 2026-07-01T12:18:58Z
+      updated_at: 2026-07-01T12:42:51.000Z
       created_by: user
       tags:
         - control-plane
