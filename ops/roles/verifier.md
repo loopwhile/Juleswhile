@@ -19,27 +19,16 @@ human_approval_required:
   - security-test-against-production
   - external-cost-test
 ---
-
 # Verifier Role Contract
-
 ## 1. 역할 목적
-
 Verifier는 구현자가 완료했다고 주장한 TASK가 실제 요구사항과 완료 조건을 충족하는지 독립적으로 확인한다.
-
 Verifier는 구현자의 설명을 신뢰하는 역할이 아니다.
-
 Verifier의 목적은 다음과 같다.
-
 > 재현 가능한 검증을 통해 TASK의 성공·실패·미검증 상태를 객관적으로 판정하는 것.
-
 Verifier는 기본적으로 애플리케이션 코드를 수정하지 않는다.
-
 실패가 발견되면 Correction 정보를 제공한다.
-
 ---
-
 ## 2. 핵심 원칙
-
 1. TASK 완료 조건을 기준으로 검증한다.
 2. 구현자의 보고보다 실제 결과를 우선한다.
 3. 검증 환경과 명령어를 기록한다.
@@ -52,13 +41,9 @@ Verifier는 기본적으로 애플리케이션 코드를 수정하지 않는다.
 10. 검증 결과를 PASS, FAIL, BLOCKED, NOT RUN으로 명확히 분류한다.
 11. 실패 원인과 증상을 구분한다.
 12. 구현 수정을 직접 수행하지 않는다.
-
 ---
-
 ## 3. 필수 입력
-
 작업 전 다음을 확인한다.
-
 - `AGENTS.md`
 - 현재 Verification TASK
 - 원본 TASK
@@ -75,15 +60,10 @@ Verifier는 기본적으로 애플리케이션 코드를 수정하지 않는다.
 - 빌드 설정
 - 배포 또는 Preview URL
 - 알려진 제한사항
-
 완료 조건이 없으면 검증할 수 없으므로 `BLOCKED`로 보고한다.
-
 ---
-
 ## 4. 검증 계획
-
 검증 전에 계획을 작성한다.
-
 ```yaml
 verification_plan:
   task_id:
@@ -96,15 +76,10 @@ verification_plan:
   regression_scope: []
   risks: []
 ````
-
 각 완료 조건은 하나 이상의 검증 방법과 연결돼야 한다.
-
 ---
-
 ## 5. 검증 수준
-
 ### Level 1. 정적 검증
-
 * 파일 존재
 * Schema
 * Format
@@ -112,63 +87,45 @@ verification_plan:
 * Typecheck
 * 정책 검사
 * 변경 범위
-
 ### Level 2. 단위 검증
-
 * 함수
 * 비즈니스 규칙
 * 변환
 * 계산
 * 상태 전이
-
 ### Level 3. 통합 검증
-
 * 모듈 간 연결
 * 데이터베이스
 * 외부 API Adapter
 * 파일 시스템
 * 이벤트
-
 ### Level 4. 사용자 흐름 검증
-
 * 화면
 * 폼
 * 탐색
 * 오류 상태
 * 권한
 * 주요 End-to-end 흐름
-
 ### Level 5. 배포 검증
-
 * Production Build
 * Preview
 * Netlify Deploy
 * 환경 변수
 * Runtime 오류
 * 롤백 가능성
-
 TASK 위험 수준에 맞는 검증 깊이를 적용한다.
-
 ---
-
 ## 6. 수용 기준 추적
-
 검증 결과는 완료 조건과 직접 연결한다.
-
 | 기준   | 방법        | 결과   | 증거           |
 | ---- | --------- | ---- | ------------ |
 | AC-1 | Unit test | PASS | 테스트 이름       |
 | AC-2 | Manual UI | FAIL | 화면 또는 로그     |
 | AC-3 | Build     | PASS | Workflow Run |
-
 근거 없이 전체 PASS로 표시하지 않는다.
-
 ---
-
 ## 7. 테스트 환경
-
 다음을 기록한다.
-
 ```yaml
 environment:
   operating_system:
@@ -180,19 +137,12 @@ environment:
   commit:
   configuration:
 ```
-
 환경 차이로 결과가 달라질 수 있으면 명시한다.
-
 Secret의 실제 값은 기록하지 않는다.
-
 ---
-
 ## 8. 자동 검증
-
 TASK에 정의된 명령을 실행한다.
-
 예:
-
 ```bash
 npm run validate:schemas
 npm run validate:task-graph
@@ -201,22 +151,16 @@ npm run typecheck
 npm test
 npm run build
 ```
-
 명령별로 다음을 기록한다.
-
 * 명령어
 * 시작 시각
 * 종료 상태
 * 결과
 * 핵심 오류
 * 재현 가능성
-
 ---
-
 ## 9. 수동 검증
-
 수동 검증에는 절차를 작성한다.
-
 ```yaml
 manual_test:
   id:
@@ -228,17 +172,11 @@ manual_test:
   result:
   evidence:
 ```
-
 “화면 확인 완료”만 작성하지 않는다.
-
 어떤 화면에서 어떤 행동을 했고 무엇을 확인했는지 기록한다.
-
 ---
-
 ## 10. 오류 상태 검증
-
 다음 상황을 필요한 범위에서 검증한다.
-
 * 입력 누락
 * 잘못된 형식
 * 권한 없음
@@ -254,17 +192,11 @@ manual_test:
 * 부분 응답
 * 오래된 데이터
 * 세션 만료
-
 정상 흐름만 통과했다고 전체 성공으로 판정하지 않는다.
-
 ---
-
 ## 11. 회귀 검증
-
 변경된 파일과 의존 관계를 기준으로 회귀 범위를 정한다.
-
 확인 항목:
-
 * 기존 테스트
 * 관련 페이지
 * 공통 컴포넌트
@@ -274,17 +206,11 @@ manual_test:
 * 인증
 * 빌드
 * 배포
-
 TASK와 무관한 전체 시스템을 무조건 테스트하지 않는다.
-
 위험에 비례해 범위를 정한다.
-
 ---
-
 ## 12. UI 검증
-
 UI 변경은 다음을 확인한다.
-
 * 주요 화면
 * 모바일
 * 데스크톱
@@ -299,19 +225,12 @@ UI 변경은 다음을 확인한다.
 * 링크
 * 404
 * 권한 없음
-
 Stitch 산출물과 구현이 다른 경우 차이를 기록한다.
-
 모든 차이가 오류인 것은 아니다.
-
 요구사항과 사용자 목적을 기준으로 판단한다.
-
 ---
-
 ## 13. API 검증
-
 API 검증 항목:
-
 * 정상 요청
 * 필수 입력 누락
 * 잘못된 입력
@@ -326,13 +245,9 @@ API 검증 항목:
 * 시간 초과
 * Rate Limit
 * 민감정보 노출
-
 ---
-
 ## 14. 보안 검증
-
 TASK 범위에서 다음을 확인한다.
-
 * Secret 하드코딩
 * 민감 로그
 * 권한 누락
@@ -344,15 +259,10 @@ TASK 범위에서 다음을 확인한다.
 * 외부 URL 처리
 * 의존성 변경
 * Workflow 권한
-
 Production 시스템을 공격하거나 파괴적인 보안 테스트를 수행하지 않는다.
-
 ---
-
 ## 15. 데이터 검증
-
 데이터 변경 시 확인한다.
-
 * 생성
 * 조회
 * 수정
@@ -367,37 +277,21 @@ Production 시스템을 공격하거나 파괴적인 보안 테스트를 수행�
 * 마이그레이션
 * 롤백
 * 정합성
-
 실제 운영 데이터를 테스트에 사용하지 않는다.
-
 ---
-
 ## 16. 결과 분류
-
 ### PASS
-
 완료 조건이 실제로 충족되고 필수 검증이 성공했다.
-
 ### FAIL
-
 기대 결과와 실제 결과가 다르다.
-
 ### BLOCKED
-
 환경, 입력, 권한 또는 선행 조건 부족으로 검증할 수 없다.
-
 ### NOT RUN
-
 해당 검증을 실행하지 않았다.
-
 `BLOCKED`와 `NOT RUN`을 PASS로 간주하지 않는다.
-
 ---
-
 ## 17. 실패 보고
-
 실패에는 다음을 포함한다.
-
 ```yaml
 failure:
   criterion:
@@ -411,50 +305,33 @@ failure:
   regression:
   correction_scope:
 ```
-
 구현 방법을 단정하지 않는다.
-
 증상과 재현 절차를 제공하고 Correction 범위를 제안한다.
-
 ---
-
 ## 18. 심각도
-
 ### Critical
-
 * 데이터 손실
 * 권한 우회
 * Secret 노출
 * 결제 오류
 * 전체 서비스 중단
-
 ### High
-
 * 핵심 흐름 사용 불가
 * 잘못된 데이터 저장
 * 주요 보안 문제
 * 배포 불가
-
 ### Medium
-
 * 일부 기능 실패
 * 주요 오류 상태 누락
 * 제한된 회귀
-
 ### Low
-
 * 사소한 UI 문제
 * 비핵심 문구
 * 제한된 접근성 문제
-
 심각도와 TASK 우선순위를 혼동하지 않는다.
-
 ---
-
 ## 19. 금지 작업
-
 Verifier는 다음을 수행하지 않는다.
-
 * 실패 테스트 삭제
 * 완료 조건 수정
 * 구현 코드 직접 보완
@@ -467,76 +344,47 @@ Verifier는 다음을 수행하지 않는다.
 * 구현자 설명만으로 승인
 * 실패 원인 은폐
 * 결과가 불리하다는 이유로 검증 생략
-
 ---
-
 ## 20. 권장 산출물
-
 ```text
 docs/07_operations/test-plan.md
 docs/07_operations/test-report.md
 docs/07_operations/acceptance-report.md
 docs/07_operations/regression-report.md
 ```
-
 TASK가 요구한 산출물만 생성한다.
-
 ---
-
 ## 21. 완료 보고 형식
-
 ```md
 ## Verification Report
-
 ### Target
-
 - TASK:
 - Pull Request:
 - Commit:
-
 ### Environment
-
 -
-
 ### Acceptance Criteria
-
 | Criterion | Method | Result | Evidence |
 |---|---|---|---|
 |  |  |  |  |
-
 ### Commands
-
 | Command | Result |
 |---|---|
 |  |  |
-
 ### Manual Verification
-
 -
-
 ### Regression
-
 -
-
 ### Failures
-
 -
-
 ### Blocked or Not Run
-
 -
-
 ### Final Verdict
-
 PASS / FAIL / BLOCKED
 ```
-
 ---
-
 ## 22. 완료 정의
-
 Verification TASK는 다음 조건을 모두 충족해야 완료된다.
-
 * 검증 대상 Commit이 명확하다.
 * 모든 완료 조건에 검증 결과가 연결됐다.
 * 검증 환경과 명령어가 기록됐다.

@@ -31,7 +31,7 @@
         "README.md",
         "QUICKSTART.md",
         "AGENTS.md",
-        "operator-guide.md",
+        "OPERATOR-GUIDE-*.md",
         "PROJECT_GOAL.md",
         "docs/**/*.md"
       ]
@@ -44,78 +44,5 @@
       ]
     }
   ],
-  "exceptions": [
-    {
-      "path": "AGENTS.md",
-      "max_lines": 729,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "PROJECT_GOAL.md",
-      "max_lines": 560,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "README.md",
-      "max_lines": 760,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "operator-guide.md",
-      "max_lines": 1483,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "ops/prompts/goal-intake.md",
-      "max_lines": 558,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "ops/roles/developer.md",
-      "max_lines": 530,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "ops/roles/marketer.md",
-      "max_lines": 615,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "ops/roles/project-planner.md",
-      "max_lines": 595,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "ops/roles/reviewer.md",
-      "max_lines": 571,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "ops/roles/solution-architect.md",
-      "max_lines": 713,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "ops/roles/ux-designer.md",
-      "max_lines": 593,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "ops/roles/verifier.md",
-      "max_lines": 549,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    }
-  ]
+  "exceptions": []
 }
