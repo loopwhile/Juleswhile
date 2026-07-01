@@ -4,9 +4,9 @@ tasks:
     title: Establish architecture baseline and source-size gate
     role: solution-architect
     type: architecture
-    status: PR_OPENED
+    status: COMPLETED
     priority: P0
-    enabled: true
+    enabled: false
     objective: Define the Juleswhile Control Plane architecture boundaries and enforce a non-regressive 500-line source-size ratchet without changing existing Runtime behavior.
     depends_on:
       - TASK-012
@@ -99,7 +99,7 @@ tasks:
       goal_issue_number: 1
       issue_number: 82
       created_at: 2026-07-01T14:17:20Z
-      updated_at: 2026-07-01T14:34:33Z
+      updated_at: 2026-07-01T14:42:12.000Z
       created_by: user
       tags:
         - architecture
