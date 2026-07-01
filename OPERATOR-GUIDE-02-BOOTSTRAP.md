@@ -191,35 +191,47 @@ gh secret list \
 ---
 # 12. Jules Source 확인
 Source 이름을 추측하지 않는다.
+API 응답에서 현재 `GITHUB_OWNER`와 `GITHUB_REPO`가 정확히 일치하는 Source 하나를 선택한다.
 ```bash
-curl \
-  --fail \
-  --silent \
-  --show-error \
-  --header "x-goog-api-key: ${JULES_API_KEY}" \
-  "https://jules.googleapis.com/v1alpha/sources" |
-  jq '
-    .sources[]? | {
-      name,
-      githubRepo
-    }
-  '
-```
-예시:
-```json
-{
-  "name": "sources/github/OWNER/REPOSITORY",
-  "githubRepo": {
-    "owner": "OWNER",
-    "repo": "REPOSITORY"
-  }
+SOURCES_JSON="$(
+  curl \
+    --fail \
+    --silent \
+    --show-error \
+    --header "x-goog-api-key: ${JULES_API_KEY}" \
+    "https://jules.googleapis.com/v1alpha/sources"
+)"
+
+JULES_SOURCE_NAME="$(
+  jq -er \
+    --arg owner "$GITHUB_OWNER" \
+    --arg repo "$GITHUB_REPO" \
+    '
+      [
+        .sources[]?
+        | select(
+            .githubRepo.owner == $owner
+            and .githubRepo.repo == $repo
+          )
+        | .name
+      ]
+      | if length == 1
+        then .[0]
+        else error(
+          "Expected exactly one matching Jules Source"
+        )
+        end
+    ' <<<"$SOURCES_JSON"
+)"
+
+[[ "$JULES_SOURCE_NAME" == sources/* ]] || {
+  echo "ERROR: Jules Source를 찾지 못했습니다." >&2
+  exit 1
 }
-```
-정확한 값을 등록한다.
-```bash
+
 gh variable set JULES_SOURCE_NAME \
   --repo "$REPOSITORY" \
-  --body "sources/github/OWNER/REPOSITORY"
+  --body "$JULES_SOURCE_NAME"
 ```
 확인:
 ```bash

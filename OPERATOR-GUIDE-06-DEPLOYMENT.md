@@ -17,10 +17,21 @@ Publish Directory: dist
 ```
 GitHub Secrets:
 ```bash
-gh secret set NETLIFY_AUTH_TOKEN \
-  --repo "$REPOSITORY"
-gh secret set NETLIFY_SITE_ID \
-  --repo "$REPOSITORY"
+read -rsp "Netlify Auth Token: " NETLIFY_AUTH_TOKEN
+echo
+read -rsp "Netlify Site ID: " NETLIFY_SITE_ID
+echo
+
+printf '%s' "$NETLIFY_AUTH_TOKEN" |
+  gh secret set NETLIFY_AUTH_TOKEN \
+    --repo "$REPOSITORY"
+
+printf '%s' "$NETLIFY_SITE_ID" |
+  gh secret set NETLIFY_SITE_ID \
+    --repo "$REPOSITORY"
+
+unset NETLIFY_AUTH_TOKEN
+unset NETLIFY_SITE_ID
 ```
 Repository Variables:
 ```bash

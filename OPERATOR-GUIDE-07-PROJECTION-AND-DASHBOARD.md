@@ -71,7 +71,9 @@ gh pr list \
 ```
 PR Check:
 ```bash
-gh pr checks <PR_NUMBER> \
+export PR_NUMBER="123"
+
+gh pr checks "$PR_NUMBER" \
   --repo "$REPOSITORY"
 ```
 Variables:
