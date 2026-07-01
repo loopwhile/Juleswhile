@@ -133,8 +133,8 @@
     "correcting": 0,
     "mergeReady": 0,
     "merged": 0,
-    "deploying": 1,
-    "completed": 11,
+    "deploying": 0,
+    "completed": 12,
     "failed": 0,
     "timeout": 0,
     "retryWait": 0,
@@ -145,27 +145,8 @@
   "runtime": {
     "activeSessions": [],
     "activePullRequests": [],
-    "resourceLocks": [
-      {
-        "resource": "control-plane",
-        "taskId": "TASK-012",
-        "acquiredAt": "2026-07-01T13:44:01Z",
-        "expiresAt": "2026-07-01T16:44:01.000Z"
-      },
-      {
-        "resource": "runtime-projection",
-        "taskId": "TASK-012",
-        "acquiredAt": "2026-07-01T13:44:01Z",
-        "expiresAt": "2026-07-01T16:44:01.000Z"
-      },
-      {
-        "resource": "static-dashboard",
-        "taskId": "TASK-012",
-        "acquiredAt": "2026-07-01T13:44:01Z",
-        "expiresAt": "2026-07-01T16:44:01.000Z"
-      }
-    ],
-    "lastReconciledAt": "2026-07-01T13:44:01.000Z"
+    "resourceLocks": [],
+    "lastReconciledAt": "2026-07-01T13:45:30.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -187,19 +168,19 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T13:44:01.000Z",
-    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28522101271"
+    "occurredAt": "2026-07-01T13:45:30.000Z",
+    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28522160045"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T13:44:01.000Z",
+  "updatedAt": "2026-07-01T13:45:30.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T13:44:01.000Z",
-    "generatedAt": "2026-07-01T13:44:01.000Z",
-    "evidenceDigest": "sha256:aec472bb4caa4afb189d1be7e733262d66d697006a2b9284e9dab555724bcdf1",
+    "observedAt": "2026-07-01T13:45:30.000Z",
+    "generatedAt": "2026-07-01T13:45:30.000Z",
+    "evidenceDigest": "sha256:43dff04b8934400b396c38d9b56ff951c50913659ebc8394a338af668b1841ba",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28522101271",
-    "syncReason": "issues",
+    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28522160045",
+    "syncReason": "repository_dispatch",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
