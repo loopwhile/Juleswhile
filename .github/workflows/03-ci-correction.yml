@@ -2,13 +2,19 @@ name: "03 · CI Correction"
 
 on:
   repository_dispatch:
-    types: [pr_validation_failed]
+    types:
+      - pr_validation_failed
   workflow_dispatch:
     inputs:
       pr_number:
         description: "PR number to correct"
         required: true
         type: number
+      skip_native_grace:
+        description: "Send the fallback message without waiting for Native CI Fixer"
+        required: false
+        default: false
+        type: boolean
       force:
         description: "Ignore AUTOMATION_ENABLED"
         required: false
@@ -24,13 +30,13 @@ concurrency:
 env:
   AUTOMATION_ENABLED: ${{ vars.AUTOMATION_ENABLED || 'false' }}
   DEFAULT_MAX_CORRECTIONS: ${{ vars.DEFAULT_MAX_CORRECTIONS || '2' }}
-  JULES_SOURCE_NAME: ${{ vars.JULES_SOURCE_NAME }}
+  NATIVE_CI_FIXER_GRACE_SECONDS: ${{ vars.NATIVE_CI_FIXER_GRACE_SECONDS || '120' }}
 
 jobs:
   correct:
-    name: Request bounded Jules correction
+    name: Reuse original Jules session after CI failure
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
@@ -45,129 +51,245 @@ jobs:
           EVENT_PR_NUMBER: ${{ github.event.client_payload.pr_number }}
           EVENT_TASK_ID: ${{ github.event.client_payload.task_id }}
           EVENT_TASK_ISSUE: ${{ github.event.client_payload.task_issue_number }}
+          EVENT_GOAL_ISSUE: ${{ github.event.client_payload.goal_issue_number }}
+          EVENT_HEAD_SHA: ${{ github.event.client_payload.head_sha }}
           EVENT_RUN_URL: ${{ github.event.client_payload.run_url }}
           MANUAL_PR_NUMBER: ${{ inputs.pr_number }}
+          MANUAL_SKIP_GRACE: ${{ inputs.skip_native_grace }}
           MANUAL_FORCE: ${{ inputs.force }}
         shell: bash
         run: |
           set -Eeuo pipefail
+
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             PR_NUMBER="${MANUAL_PR_NUMBER}"
+            TASK_ID=""
+            ISSUE_NUMBER=""
+            FAILED_HEAD_SHA=""
+            FAILED_RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            SKIP_GRACE="${MANUAL_SKIP_GRACE:-false}"
             FORCE_RUN="${MANUAL_FORCE:-false}"
           else
             PR_NUMBER="${EVENT_PR_NUMBER}"
+            TASK_ID="${EVENT_TASK_ID:-}"
+            ISSUE_NUMBER="${EVENT_TASK_ISSUE:-${EVENT_GOAL_ISSUE:-}}"
+            FAILED_HEAD_SHA="${EVENT_HEAD_SHA:-}"
+            FAILED_RUN_URL="${EVENT_RUN_URL:-}"
+            SKIP_GRACE=false
             FORCE_RUN=false
           fi
-          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::Invalid PR number"; exit 1; }
+
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || {
+            echo "::error::Invalid PR number"
+            exit 1
+          }
+
           if [[ "$AUTOMATION_ENABLED" != "true" && "$FORCE_RUN" != "true" ]]; then
-            echo "::notice::AUTOMATION_ENABLED is not true; correction skipped"
+            echo "::notice::AUTOMATION_ENABLED is not true; automatic correction is disabled"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          [[ "$DEFAULT_MAX_CORRECTIONS" =~ ^[0-9]+$ ]] && (( DEFAULT_MAX_CORRECTIONS >= 1 && DEFAULT_MAX_CORRECTIONS <= 10 )) || {
+            echo "::error::DEFAULT_MAX_CORRECTIONS must be an integer from 1 to 10"
+            exit 1
+          }
+
+          [[ "$NATIVE_CI_FIXER_GRACE_SECONDS" =~ ^[0-9]+$ ]] && (( NATIVE_CI_FIXER_GRACE_SECONDS <= 600 )) || {
+            echo "::error::NATIVE_CI_FIXER_GRACE_SECONDS must be an integer from 0 to 600"
+            exit 1
+          }
 
           PR_JSON="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
-          STATE="$(jq -r '.state' <<<"$PR_JSON")"
+          STATE="$(jq -r '.state // ""' <<<"$PR_JSON")"
           DRAFT="$(jq -r '.draft // false' <<<"$PR_JSON")"
-          HEAD_REF="$(jq -r '.head.ref' <<<"$PR_JSON")"
-          HEAD_SHA="$(jq -r '.head.sha' <<<"$PR_JSON")"
-          HEAD_REPO="$(jq -r '.head.repo.full_name' <<<"$PR_JSON")"
-          TITLE="$(jq -r '.title' <<<"$PR_JSON")"
-          [[ "$STATE" == "open" && "$DRAFT" == "false" ]] || { echo "::notice::PR is not correctable"; echo "should_run=false" >> "$GITHUB_OUTPUT"; exit 0; }
-          [[ "$HEAD_REPO" == "$REPOSITORY" ]] || { echo "::error::Cross-repository correction is forbidden"; exit 1; }
+          HEAD_SHA="$(jq -r '.head.sha // ""' <<<"$PR_JSON")"
+          HEAD_REPO="$(jq -r '.head.repo.full_name // ""' <<<"$PR_JSON")"
+          TITLE="$(jq -r '.title // ""' <<<"$PR_JSON")"
+          BODY="$(jq -r '.body // ""' <<<"$PR_JSON")"
 
-          TASK_ID="${EVENT_TASK_ID:-}"
-          if [[ -z "$TASK_ID" && "$TITLE" =~ ^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)\] ]]; then TASK_ID="${BASH_REMATCH[1]}"; fi
-          [[ "$TASK_ID" =~ ^(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)$ ]] || { echo "::error::Managed id not found"; exit 1; }
-
-          ATTEMPTS="$(gh api "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" --paginate --jq '[.[] | select((.body // "") | contains("<!-- juleswhile:correction-dispatch -->"))] | length' | awk '{s+=$1} END{print s+0}')"
-          if (( ATTEMPTS >= DEFAULT_MAX_CORRECTIONS )); then
-            gh label create state:blocked --repo "$REPOSITORY" --color D73A4A --description "TASK requires intervention" --force
-            gh label create human-decision-required --repo "$REPOSITORY" --color D93F0B --description "Human decision required" --force
-            jq -n '{labels:["state:blocked","human-decision-required"]}' | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
-            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-limit -->
-
-## 자동 보완 한도 초과
-
-자동 Correction ${ATTEMPTS}/${DEFAULT_MAX_CORRECTIONS}회를 사용하여 사람 검토로 전환했습니다." || true
+          if [[ "$STATE" != "open" || "$DRAFT" != "false" ]]; then
+            echo "::notice::PR is not open and ready; correction is not required"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          ATTEMPT=$((ATTEMPTS + 1))
-          RUN_URL="${EVENT_RUN_URL:-${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}}"
+          [[ "$HEAD_REPO" == "$REPOSITORY" ]] || {
+            echo "::error::Cross-repository correction is forbidden"
+            exit 1
+          }
+
+          if [[ -z "$TASK_ID" && "$TITLE" =~ ^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+|MAINTENANCE|TEMPLATE)\] ]]; then
+            TASK_ID="${BASH_REMATCH[1]}"
+          fi
+
+          if [[ ! "$TASK_ID" =~ ^(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)$ ]]; then
+            echo "::notice::This PR is not linked to an executable Jules TASK or Goal"
+            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-unavailable -->
+
+## 자동 Correction 미적용
+
+이 PR은 실행 가능한 Jules TASK/Goal Session과 연결되지 않았습니다. CI 로그를 확인하여 사람이 수정해야 합니다." || true
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -z "$FAILED_HEAD_SHA" ]]; then
+            FAILED_HEAD_SHA="$HEAD_SHA"
+          fi
+
+          if [[ -z "$ISSUE_NUMBER" ]]; then
+            ISSUE_NUMBER="$(
+              grep -Eio '(TASK|Goal) Issue:[[:space:]]*(https://github.com/[^/[:space:]]+/[^/[:space:]]+/issues/)?#?[0-9]+' <<<"$BODY" \
+                | grep -Eo '[0-9]+$' \
+                | head -1 \
+                || true
+            )"
+          fi
+
+          SESSION_ID="$(
+            grep -Eo 'https://jules\.google\.com/task/[0-9]+' <<<"$BODY" \
+              | grep -Eo '[0-9]+$' \
+              | head -1 \
+              || true
+          )"
+
+          if [[ -z "$SESSION_ID" && "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+            COMMENTS="$(gh api "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/comments?per_page=100" --paginate)"
+            SESSION_ID="$(
+              jq -r '.[].body // empty' <<<"$COMMENTS" \
+                | sed -nE 's/.*Session ID[[:space:]]*\|[[:space:]]*`?([0-9]+)`?.*/\1/ip; s/^session_id:[[:space:]]*([0-9]+).*/\1/ip' \
+                | tail -1
+            )"
+          fi
+
+          ATTEMPTS="$(
+            gh api "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" --paginate \
+              --jq '[.[] | select((.body // "") | contains("<!-- juleswhile:correction-fallback -->"))] | length' \
+              | awk '{sum += $1} END {print sum + 0}'
+          )"
+
+          if (( ATTEMPTS >= DEFAULT_MAX_CORRECTIONS )); then
+            gh label create "state:blocked" --repo "$REPOSITORY" --color "D73A4A" --description "TASK requires intervention" --force
+            gh label create "human-decision-required" --repo "$REPOSITORY" --color "D93F0B" --description "Human decision required" --force
+            jq -n '{labels:["state:blocked","human-decision-required"]}' \
+              | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
+            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-limit -->
+
+## 자동 Correction 한도 초과
+
+기존 Jules Session 보완 요청을 \`${ATTEMPTS}/${DEFAULT_MAX_CORRECTIONS}\`회 사용했습니다. 추가 자동 요청을 중단하고 사람 검토로 전환합니다." || true
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           {
             echo "should_run=true"
             echo "pr_number=${PR_NUMBER}"
             echo "task_id=${TASK_ID}"
-            echo "task_issue=${EVENT_TASK_ISSUE:-}"
-            echo "head_ref=${HEAD_REF}"
-            echo "head_sha=${HEAD_SHA}"
-            echo "attempt=${ATTEMPT}"
-            echo "run_url=${RUN_URL}"
+            echo "issue_number=${ISSUE_NUMBER}"
+            echo "session_id=${SESSION_ID}"
+            echo "failed_head_sha=${FAILED_HEAD_SHA}"
+            echo "failed_run_url=${FAILED_RUN_URL}"
+            echo "skip_grace=${SKIP_GRACE}"
+            echo "attempt=$((ATTEMPTS + 1))"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create and record Jules correction session
+      - name: Give Native CI Fixer time to update the PR
+        if: steps.context.outputs.should_run == 'true' && steps.context.outputs.skip_grace != 'true'
+        env:
+          GRACE_SECONDS: ${{ env.NATIVE_CI_FIXER_GRACE_SECONDS }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if (( GRACE_SECONDS > 0 )); then
+            echo "Waiting ${GRACE_SECONDS}s for Jules Native CI Fixer"
+            sleep "$GRACE_SECONDS"
+          fi
+
+      - name: Check whether Native CI Fixer already pushed a commit
+        id: native
         if: steps.context.outputs.should_run == 'true'
-        id: session
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.context.outputs.pr_number }}
+          FAILED_HEAD_SHA: ${{ steps.context.outputs.failed_head_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CURRENT_HEAD_SHA="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          if [[ "$CURRENT_HEAD_SHA" != "$FAILED_HEAD_SHA" ]]; then
+            echo "native_fixed=true" >> "$GITHUB_OUTPUT"
+            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:native-ci-fixer-observed -->
+
+## Jules Native CI Fixer 동작 확인
+
+실패 Commit \`${FAILED_HEAD_SHA}\` 이후 새 Commit \`${CURRENT_HEAD_SHA}\`이 Push되었습니다. 새 PR Validation 결과를 기다립니다." || true
+          else
+            echo "native_fixed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Send fallback message to the original Jules session
+        if: steps.context.outputs.should_run == 'true' && steps.native.outputs.native_fixed != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ steps.context.outputs.pr_number }}
           TASK_ID: ${{ steps.context.outputs.task_id }}
-          TASK_ISSUE: ${{ steps.context.outputs.task_issue }}
-          HEAD_REF: ${{ steps.context.outputs.head_ref }}
-          HEAD_SHA: ${{ steps.context.outputs.head_sha }}
+          SESSION_ID: ${{ steps.context.outputs.session_id }}
+          FAILED_HEAD_SHA: ${{ steps.context.outputs.failed_head_sha }}
+          FAILED_RUN_URL: ${{ steps.context.outputs.failed_run_url }}
           ATTEMPT: ${{ steps.context.outputs.attempt }}
-          FAILED_RUN_URL: ${{ steps.context.outputs.run_url }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ -n "$JULES_API_KEY" ]] || { echo "::error::JULES_API_KEY missing"; exit 1; }
-          [[ "$JULES_SOURCE_NAME" =~ ^sources/ ]] || { echo "::error::JULES_SOURCE_NAME invalid"; exit 1; }
 
-          gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-dispatch -->
+          if [[ ! "$SESSION_ID" =~ ^[0-9]+$ || -z "$JULES_API_KEY" ]]; then
+            gh label create "human-decision-required" --repo "$REPOSITORY" --color "D93F0B" --description "Human decision required" --force
+            jq -n '{labels:["human-decision-required"]}' \
+              | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
+            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-session-missing -->
 
-## Jules Correction Dispatch
+## Jules Session 보완 요청 실패
 
-- TASK: \`${TASK_ID}\`
-- Attempt: \`${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}\`
-- Failed validation: ${FAILED_RUN_URL}
-
-동일 PR 브랜치에서 실패 원인만 최소 수정하도록 Jules에 요청합니다."
+원본 Jules Session ID 또는 \`JULES_API_KEY\`를 확인할 수 없습니다. Native CI Fixer도 제한 시간 안에 새 Commit을 Push하지 않았으므로 사람 검토가 필요합니다." || true
+            exit 1
+          fi
 
           PROMPT="$(cat <<EOF
-Correct the existing Juleswhile PR #${PR_NUMBER} for ${TASK_ID} after validation failure.
+The Pull Request created by this session failed Juleswhile validation.
+
 Repository: ${GITHUB_REPOSITORY}
-TASK Issue: ${TASK_ISSUE:-not-linked}
-Existing branch: ${HEAD_REF}
-Failed commit: ${HEAD_SHA}
+Pull Request: #${PR_NUMBER}
+TASK: ${TASK_ID}
+Failed commit: ${FAILED_HEAD_SHA}
 Failed workflow: ${FAILED_RUN_URL}
-Attempt: ${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}
+Fallback attempt: ${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}
 
-Read AGENTS.md, PROJECT_GOAL.md, ops/prompts/correct-task.md, the TASK contract, PR diff, and failed logs. Work only on ${HEAD_REF}. Do not create a new branch or PR. Do not change scope or acceptance criteria. Never delete, skip, or weaken tests. Fix only the root cause, run all validation commands and npm run ci when available, then push correction commits to ${HEAD_REF}. If unsafe, report BLOCKED without unrelated changes.
+Inspect the GitHub Actions failure and correct the existing Pull Request. Keep the current TASK scope and allowed paths. Do not create another Pull Request. Do not delete, skip, or weaken tests or validation. Push only the minimum correction to the existing PR branch, run all required validation commands, and report BLOCKED if the failure cannot be fixed safely.
 EOF
-)"
+          )"
 
-          jq -n --arg prompt "$PROMPT" --arg title "[${TASK_ID}] Correct PR #${PR_NUMBER}" --arg source "$JULES_SOURCE_NAME" --arg branch "$HEAD_REF" \
-            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}' \
-            > "${RUNNER_TEMP}/request.json"
+          gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-fallback -->
 
-          curl --fail-with-body --silent --show-error --connect-timeout 15 --max-time 60 \
-            -X POST "https://jules.googleapis.com/v1alpha/sessions" \
-            -H "Content-Type: application/json" -H "x-goog-api-key: ${JULES_API_KEY}" \
-            --data-binary "@${RUNNER_TEMP}/request.json" > "${RUNNER_TEMP}/response.json"
+## 기존 Jules Session 보완 요청
 
-          SESSION_NAME="$(jq -r '.name // empty' "${RUNNER_TEMP}/response.json")"
-          SESSION_ID="$(jq -r '.id // (.name // "" | split("/") | last) // empty' "${RUNNER_TEMP}/response.json")"
-          [[ -n "$SESSION_NAME" || -n "$SESSION_ID" ]] || { echo "::error::No Jules session identity"; jq '{error,message,state}' "${RUNNER_TEMP}/response.json"; exit 1; }
+- Session ID: \`${SESSION_ID}\`
+- Attempt: \`${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}\`
+- Failed commit: \`${FAILED_HEAD_SHA}\`
+- Workflow: ${FAILED_RUN_URL}
 
-          gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-session -->
+Native CI Fixer가 제한 시간 안에 Commit을 Push하지 않아 원본 Session에 보완 메시지를 전송합니다."
 
-## Jules Correction Session 생성 완료
+          jq -n --arg prompt "$PROMPT" '{prompt:$prompt}' > "${RUNNER_TEMP}/send-message.json"
 
-- Session: \`${SESSION_NAME:-unknown}\`
-- Session ID: \`${SESSION_ID:-unknown}\`
-- Existing branch: \`${HEAD_REF}\`
-
-새 커밋이 Push되면 PR Validation이 자동 재실행됩니다."
+          curl --fail-with-body --silent --show-error \
+            --connect-timeout 15 \
+            --max-time 60 \
+            -X POST "https://jules.googleapis.com/v1alpha/sessions/${SESSION_ID}:sendMessage" \
+            -H "Content-Type: application/json" \
+            -H "x-goog-api-key: ${JULES_API_KEY}" \
+            --data-binary "@${RUNNER_TEMP}/send-message.json" \
+            >/dev/null
