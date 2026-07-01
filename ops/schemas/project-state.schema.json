@@ -17,6 +17,7 @@
     "automation",
     "taskSummary",
     "runtime",
+    "projection",
     "quotas",
     "lastEvent",
     "createdAt",
@@ -111,6 +112,9 @@
     "updatedAt": {
       "type": "string",
       "format": "date-time"
+    },
+    "projection": {
+      "$ref": "#/$defs/projection"
     }
   },
   "$defs": {
@@ -649,6 +653,101 @@
               "type": "null"
             }
           ]
+        }
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "observedAt",
+        "generatedAt",
+        "evidenceDigest",
+        "source",
+        "workflowRunUrl",
+        "syncReason",
+        "drift"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "current",
+            "stale",
+            "degraded",
+            "invalid"
+          ]
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evidenceDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "source": {
+          "type": "string",
+          "const": "github-runtime-evidence"
+        },
+        "workflowRunUrl": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "syncReason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "drift": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stateLabelConflicts",
+            "missingCanonicalIssues",
+            "supersededIssues",
+            "manifestMismatches",
+            "issueLifecycleMismatches",
+            "sessionLookupErrors"
+          ],
+          "properties": {
+            "stateLabelConflicts": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missingCanonicalIssues": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "supersededIssues": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "manifestMismatches": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "issueLifecycleMismatches": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sessionLookupErrors": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         }
       }
     }

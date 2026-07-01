@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export interface GitHubLabel {
   name?: string;
 }
@@ -70,6 +72,8 @@ export interface ProjectionInput {
   pullRequests: GitHubPullRequestEvidence[];
   sessionsByName: Record<string, SessionObservation>;
   runUrl?: string | null;
+  syncReason?: string;
+  sessionLookupErrors?: number;
 }
 
 export interface ProjectionDrift {
@@ -539,11 +543,141 @@ function semanticState(
     );
   }
 
+  const projection = clone.projection;
+
+  if (
+    typeof projection === "object" &&
+    projection !== null &&
+    !Array.isArray(projection)
+  ) {
+    const record =
+      projection as Record<string, unknown>;
+
+    Reflect.deleteProperty(
+      record,
+      "generatedAt",
+    );
+    Reflect.deleteProperty(
+      record,
+      "workflowRunUrl",
+    );
+    Reflect.deleteProperty(
+      record,
+      "syncReason",
+    );
+  }
+
   return clone;
 }
 
+function canonicalValue(
+  value: unknown,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalValue);
+  }
+
+  if (
+    typeof value === "object" &&
+    value !== null
+  ) {
+    return Object.fromEntries(
+      Object.entries(
+        value as Record<string, unknown>,
+      )
+        .sort(([left], [right]) =>
+          left.localeCompare(right),
+        )
+        .map(([key, entry]) => [
+          key,
+          canonicalValue(entry),
+        ]),
+    );
+  }
+
+  return value;
+}
+
 function stableJson(value: unknown): string {
-  return JSON.stringify(value);
+  return JSON.stringify(
+    canonicalValue(value),
+  );
+}
+
+function runtimeEvidenceDigest(
+  input: ProjectionInput,
+): string {
+  const tasks = input.taskIndex.tasks
+    .filter((task) => task.kind === "task")
+    .map((task) => ({
+      id: task.id,
+      issueNumber:
+        task.metadata?.issue_number ?? null,
+    }))
+    .sort((left, right) =>
+      left.id.localeCompare(right.id),
+    );
+
+  const issues = input.issues
+    .map((issue) => ({
+      number: issue.number,
+      title: issue.title,
+      body: issue.body,
+      state: issue.state,
+      htmlUrl: issue.html_url,
+      createdAt: issue.created_at,
+      updatedAt: issue.updated_at,
+      labels: labelNames(issue).sort(),
+    }))
+    .sort(
+      (left, right) =>
+        left.number - right.number,
+    );
+
+  const comments = Object.entries(
+    input.commentsByIssue,
+  )
+    .map(([issueNumber, entries]) => ({
+      issueNumber: Number(issueNumber),
+      comments: [...entries].sort(
+        (left, right) =>
+          `${left.created_at}:${left.updated_at ?? ""}:${left.body ?? ""}`
+            .localeCompare(
+              `${right.created_at}:${right.updated_at ?? ""}:${right.body ?? ""}`,
+            ),
+      ),
+    }))
+    .sort(
+      (left, right) =>
+        left.issueNumber -
+        right.issueNumber,
+    );
+
+  const pullRequests = [
+    ...input.pullRequests,
+  ].sort(
+    (left, right) =>
+      left.number - right.number,
+  );
+
+  const sessions = Object.values(
+    input.sessionsByName,
+  ).sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
+
+  const evidence = {
+    repository: input.repository,
+    tasks,
+    issues,
+    comments,
+    pullRequests,
+    sessions,
+  };
+
+  return `sha256:${createHash("sha256")
+    .update(stableJson(evidence))
+    .digest("hex")}`;
 }
 
 function normalizeSessionState(
@@ -1060,6 +1194,31 @@ export function projectRuntimeState(
       {}
     ) as Record<string, unknown>;
 
+  const driftCounts = {
+    stateLabelConflicts:
+      drift.stateLabelConflicts.length,
+    missingCanonicalIssues:
+      drift.missingCanonicalIssues.length,
+    supersededIssues:
+      drift.supersededIssues.length,
+    manifestMismatches: 0,
+    issueLifecycleMismatches:
+      drift.issueLifecycleMismatches.length,
+    sessionLookupErrors: Math.max(
+      0,
+      input.sessionLookupErrors ?? 0,
+    ),
+  };
+
+  const projectionStatus =
+    driftCounts.stateLabelConflicts > 0 ||
+    driftCounts.missingCanonicalIssues > 0
+      ? "invalid"
+      : driftCounts.sessionLookupErrors > 0 ||
+          driftCounts.issueLifecycleMismatches > 0
+        ? "degraded"
+        : "current";
+
   const candidateState = {
     ...input.currentState,
     taskSummary: summary,
@@ -1068,6 +1227,21 @@ export function projectRuntimeState(
       activeSessions,
       activePullRequests,
       resourceLocks,
+    },
+    projection: {
+      status: projectionStatus,
+      observedAt,
+      generatedAt: observedAt,
+      evidenceDigest:
+        runtimeEvidenceDigest(input),
+      source:
+        "github-runtime-evidence",
+      workflowRunUrl:
+        input.runUrl ?? null,
+      syncReason:
+        input.syncReason ??
+        "runtime-projection-sync",
+      drift: driftCounts,
     },
     quotas: projectQuotaUsage(
       input.commentsByIssue,
