@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "policy": "ratchet",
+  "line_limit": 500,
+  "baseline_sha": "8fa8ce9e5a6ce6b97600fd59320a379c61ebb3da",
+  "recorded_at": "2026-07-01T14:02:43Z",
+  "scopes": [
+    {
+      "name": "typescript",
+      "patterns": [
+        "ops/**/*.ts"
+      ]
+    },
+    {
+      "name": "workflow-yaml",
+      "patterns": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ]
+    },
+    {
+      "name": "task-manifest-yaml",
+      "patterns": [
+        "ops/tasks/**/*.yaml",
+        "ops/tasks/**/*.yml"
+      ]
+    },
+    {
+      "name": "operational-docs",
+      "patterns": [
+        "README.md",
+        "QUICKSTART.md",
+        "AGENTS.md",
+        "operator-guide.md",
+        "PROJECT_GOAL.md",
+        "docs/**/*.md"
+      ]
+    },
+    {
+      "name": "role-prompt-docs",
+      "patterns": [
+        "ops/roles/**/*.md",
+        "ops/prompts/**/*.md"
+      ]
+    }
+  ],
+  "exceptions": [
+    {
+      "path": ".github/workflows/02-dispatch-jules.yml",
+      "max_lines": 510,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": ".github/workflows/08-netlify-status.yml",
+      "max_lines": 589,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "AGENTS.md",
+      "max_lines": 729,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "PROJECT_GOAL.md",
+      "max_lines": 560,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "README.md",
+      "max_lines": 760,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "operator-guide.md",
+      "max_lines": 1483,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "ops/prompts/goal-intake.md",
+      "max_lines": 558,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "ops/roles/developer.md",
+      "max_lines": 530,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "ops/roles/marketer.md",
+      "max_lines": 615,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "ops/roles/project-planner.md",
+      "max_lines": 595,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "ops/roles/reviewer.md",
+      "max_lines": 571,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "ops/roles/solution-architect.md",
+      "max_lines": 713,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "ops/roles/ux-designer.md",
+      "max_lines": 593,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "ops/roles/verifier.md",
+      "max_lines": 549,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    },
+    {
+      "path": "ops/scripts/dispatch-jules.ts",
+      "max_lines": 1823,
+      "follow_up_task": "TASK-015",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
+    },
+    {
+      "path": "ops/scripts/materialize-issues.ts",
+      "max_lines": 1442,
+      "follow_up_task": "TASK-015",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
+    },
+    {
+      "path": "ops/scripts/project-state-projection.test.ts",
+      "max_lines": 617,
+      "follow_up_task": "TASK-014",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-014."
+    },
+    {
+      "path": "ops/scripts/project-state-projection.ts",
+      "max_lines": 1295,
+      "follow_up_task": "TASK-014",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-014."
+    },
+    {
+      "path": "ops/scripts/rebuild-project-state.ts",
+      "max_lines": 507,
+      "follow_up_task": "TASK-014",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-014."
+    },
+    {
+      "path": "ops/scripts/reconcile-project.test.ts",
+      "max_lines": 642,
+      "follow_up_task": "TASK-014",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-014."
+    },
+    {
+      "path": "ops/scripts/reconcile-project.ts",
+      "max_lines": 2436,
+      "follow_up_task": "TASK-014",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-014."
+    },
+    {
+      "path": "ops/scripts/select-next-task.ts",
+      "max_lines": 1460,
+      "follow_up_task": "TASK-015",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
+    },
+    {
+      "path": "ops/scripts/task-state-transition.ts",
+      "max_lines": 584,
+      "follow_up_task": "TASK-015",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
+    },
+    {
+      "path": "ops/scripts/validate-task-graph.ts",
+      "max_lines": 762,
+      "follow_up_task": "TASK-015",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
+    },
+    {
+      "path": "ops/tasks/task-history.yaml",
+      "max_lines": 1309,
+      "follow_up_task": "TASK-016",
+      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
+    }
+  ]
+}
