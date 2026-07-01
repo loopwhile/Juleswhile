@@ -122,13 +122,13 @@
     "pausedReason": null
   },
   "taskSummary": {
-    "total": 12,
+    "total": 13,
     "draft": 0,
     "ready": 0,
     "queued": 0,
     "dispatching": 0,
     "running": 0,
-    "prOpened": 0,
+    "prOpened": 1,
     "validating": 0,
     "correcting": 0,
     "mergeReady": 0,
