@@ -11,7 +11,18 @@ defaults:
     timeout_minutes: 60
 includes:
   - task-templates.yaml
-  - task-history.yaml
+  - history/task-001.yaml
+  - history/task-002.yaml
+  - history/task-003.yaml
+  - history/task-004.yaml
+  - history/task-005.yaml
+  - history/task-006.yaml
+  - history/task-007.yaml
+  - history/task-008.yaml
+  - history/task-009.yaml
+  - history/task-010.yaml
+  - history/task-011.yaml
+  - history/task-012.yaml
   - history/task-013.yaml
   - history/task-014.yaml
   - history/task-015.yaml

@@ -124,10 +124,10 @@
   "taskSummary": {
     "total": 16,
     "draft": 0,
-    "ready": 1,
+    "ready": 0,
     "queued": 0,
     "dispatching": 0,
-    "running": 0,
+    "running": 1,
     "prOpened": 0,
     "validating": 0,
     "correcting": 0,
@@ -145,8 +145,33 @@
   "runtime": {
     "activeSessions": [],
     "activePullRequests": [],
-    "resourceLocks": [],
-    "lastReconciledAt": "2026-07-01T19:00:04.000Z"
+    "resourceLocks": [
+      {
+        "resource": "control-plane-architecture",
+        "taskId": "TASK-016",
+        "acquiredAt": "2026-07-01T19:04:28Z",
+        "expiresAt": "2026-07-02T00:04:28.000Z"
+      },
+      {
+        "resource": "root-documentation",
+        "taskId": "TASK-016",
+        "acquiredAt": "2026-07-01T19:04:28Z",
+        "expiresAt": "2026-07-02T00:04:28.000Z"
+      },
+      {
+        "resource": "task-manifest",
+        "taskId": "TASK-016",
+        "acquiredAt": "2026-07-01T19:04:28Z",
+        "expiresAt": "2026-07-02T00:04:28.000Z"
+      },
+      {
+        "resource": "workflow-contracts",
+        "taskId": "TASK-016",
+        "acquiredAt": "2026-07-01T19:04:28Z",
+        "expiresAt": "2026-07-02T00:04:28.000Z"
+      }
+    ],
+    "lastReconciledAt": "2026-07-01T19:04:28.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -168,19 +193,19 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T19:00:04.000Z",
+    "occurredAt": "2026-07-01T19:04:28.000Z",
     "runUrl": null
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T19:00:04.000Z",
+  "updatedAt": "2026-07-01T19:04:28.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T19:00:04.000Z",
-    "generatedAt": "2026-07-01T19:00:04.000Z",
-    "evidenceDigest": "sha256:48a2d2be7d80f72797b9bb1ca74b26376b54feceabd657a1a5959da9e24e3e86",
+    "observedAt": "2026-07-01T19:04:28.000Z",
+    "generatedAt": "2026-07-01T19:04:28.000Z",
+    "evidenceDigest": "sha256:8894fac4ff237da38c079fd314dd6e1723667baf507a7084459b590a6dd28901",
     "source": "github-runtime-evidence",
     "workflowRunUrl": null,
-    "syncReason": "manual-task-016-registration",
+    "syncReason": "manual-task-016-turn-3",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,

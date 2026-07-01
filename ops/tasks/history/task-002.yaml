@@ -1,0 +1,93 @@
+tasks:
+  - kind: task
+    id: TASK-002
+    title: Harden Juleswhile control-plane workflows
+    role: developer
+    type: bug-fix
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Harden GitHub Actions control-plane state transitions, Planner Pull Request metadata contracts, Jules Source validation, and TASK summary consistency.
+    depends_on: []
+    inputs:
+      - docs/01_overview/juleswhile-smoke-test.md
+      - .github/workflows/**
+      - ops/schemas/project-state.schema.json
+      - ops/scripts/validate-task-graph.ts
+    outputs:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/schemas/project-state.schema.json
+      - ops/scripts/validate-task-graph.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    acceptance_criteria:
+      - Planner PR descriptions require the Juleswhile PR marker and Goal Issue reference.
+      - The project-state schema accepts the real Jules Source resource name.
+      - TASK Manifest counts are validated against project-state taskSummary.
+      - Workflow state and label mutations use GitHub REST APIs instead of gh edit commands.
+      - Goal Issues are completed automatically after their Planner PR is merged.
+      - Solo-operator control-plane merges require the explicit approval:owner-approved label.
+      - All Workflow YAML files parse successfully with the Node.js yaml package.
+      - npm run ci passes.
+      - Automation variables remain disabled.
+    allowed_paths:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/schemas/project-state.schema.json
+      - ops/scripts/validate-task-graph.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    forbidden_paths:
+      - .github/workflows/06-reconciler.yml
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/schemas/task.schema.json
+      - netlify.toml
+      - src/**
+      - content/**
+    forbidden_actions:
+      - Enable AUTOMATION_ENABLED.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Modify Secrets or expose credentials.
+      - Change Netlify site configuration.
+      - Bypass Pull Request validation.
+      - Directly push Jules-generated work to main.
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run typecheck
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+    metadata:
+      goal_issue_number: 1
+      issue_number: 3
+      created_at: 2026-06-27T09:30:44Z
+      updated_at: 2026-06-27T11:43:29Z
+      created_by: user
+      tags:
+        - control-plane
+        - hardening
+        - github-actions

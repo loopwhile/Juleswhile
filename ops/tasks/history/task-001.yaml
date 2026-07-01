@@ -1,0 +1,50 @@
+tasks:
+  - kind: task
+    id: TASK-001
+    title: Juleswhile Smoke Test Verifier
+    role: verifier
+    type: verification
+    status: COMPLETED
+    priority: P1
+    enabled: false
+    objective: Verify the planner results and orchestration by passing validation commands.
+    depends_on: []
+    inputs:
+      - docs/01_overview/juleswhile-smoke-test.md
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    outputs:
+      - docs/01_overview/juleswhile-smoke-test-result.md
+    acceptance_criteria:
+      - Schema validation passes.
+      - Task graph validation passes.
+    allowed_paths:
+      - docs/01_overview/juleswhile-smoke-test-result.md
+    forbidden_paths:
+      - .github/**
+      - ops/schemas/**
+      - ops/scripts/**
+    forbidden_actions:
+      - Do not implement features
+      - Do not modify secrets
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+    risk_level: low
+    approval_policy: automatic
+    parallelizable: false
+    resource_locks: []
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 60
+    stitch:
+      allowed: false
+    metadata:
+      goal_issue_number: 1
+      issue_number: 5
+      created_at: 2026-06-27T00:00:00+09:00
+      updated_at: 2026-06-27T13:55:54.076595Z
+      created_by: project-planner
+      tags:
+        - smoke-test

@@ -1,43 +1,35 @@
 name: "08 · Netlify Status"
-
 on:
   repository_dispatch:
     types:
       - pr_merged
-
   workflow_dispatch:
     inputs:
       merge_sha:
         description: "확인할 main 병합 Commit SHA"
         required: true
         type: string
-
       task_id:
         description: "관련 TASK ID"
         required: false
         type: string
-
       issue_number:
         description: "관련 TASK Issue 번호"
         required: false
         type: string
-
       dry_run:
         description: "Netlify API 호출 없이 설정만 검증"
         required: false
         default: true
         type: boolean
-
       force:
         description: "NETLIFY_STATUS_ENABLED 상태를 무시"
         required: false
         default: false
         type: boolean
-
 permissions:
   contents: write
   issues: write
-
 concurrency:
   group: >-
     netlify-status-${{
@@ -46,7 +38,6 @@ concurrency:
       github.run_id
     }}
   cancel-in-progress: false
-
 env:
   NETLIFY_API_BASE_URL: "https://api.netlify.com/api/v1"
   NETLIFY_STATUS_ENABLED: ${{ vars.NETLIFY_STATUS_ENABLED || 'false' }}
@@ -54,13 +45,11 @@ env:
   NETLIFY_PRODUCTION_BRANCH: ${{ vars.NETLIFY_PRODUCTION_BRANCH || 'main' }}
   NETLIFY_POLL_ATTEMPTS: ${{ vars.NETLIFY_POLL_ATTEMPTS || '20' }}
   NETLIFY_POLL_INTERVAL_SECONDS: ${{ vars.NETLIFY_POLL_INTERVAL_SECONDS || '15' }}
-
 jobs:
   status:
     name: Verify Netlify production deployment
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
       - name: Resolve deployment input
         id: input
@@ -77,7 +66,6 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           if [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
             MERGE_SHA="${EVENT_MERGE_SHA:-}"
             TASK_ID="${EVENT_TASK_ID:-}"
@@ -91,36 +79,30 @@ jobs:
             DRY_RUN="${MANUAL_DRY_RUN:-true}"
             FORCE_RUN="${MANUAL_FORCE:-false}"
           fi
-
           MERGE_SHA="$(
             printf '%s' "$MERGE_SHA" \
               | tr '[:upper:]' '[:lower:]' \
               | xargs
           )"
-
           TASK_ID="$(
             printf '%s' "$TASK_ID" \
               | tr '[:lower:]' '[:upper:]' \
               | xargs
           )"
-
           if [[ ! "$MERGE_SHA" =~ ^[0-9a-f]{7,40}$ ]]; then
             echo "::error::유효한 Git Commit SHA가 필요합니다."
             exit 1
           fi
-
           if [[ -n "$TASK_ID" ]] \
             && [[ ! "$TASK_ID" =~ ^(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)$ ]]; then
             echo "::error::TASK ID 형식이 올바르지 않습니다: ${TASK_ID}"
             exit 1
           fi
-
           if [[ -n "$ISSUE_NUMBER" ]] \
             && [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
             echo "::error::Issue 번호는 숫자여야 합니다."
             exit 1
           fi
-
           case "$DRY_RUN" in
             true|false)
               ;;
@@ -129,7 +111,6 @@ jobs:
               exit 1
               ;;
           esac
-
           case "$FORCE_RUN" in
             true|false)
               ;;
@@ -138,14 +119,12 @@ jobs:
               exit 1
               ;;
           esac
-
           echo "merge_sha=${MERGE_SHA}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${MERGE_SHA:0:7}" >> "$GITHUB_OUTPUT"
           echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
           echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
           echo "force=${FORCE_RUN}" >> "$GITHUB_OUTPUT"
-
           if [[ "$NETLIFY_STATUS_ENABLED" != "true" ]] \
             && [[ "$DRY_RUN" != "true" ]] \
             && [[ "$FORCE_RUN" != "true" ]]; then
@@ -154,24 +133,20 @@ jobs:
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
           if [[ ! "$NETLIFY_POLL_ATTEMPTS" =~ ^[0-9]+$ ]] \
             || (( NETLIFY_POLL_ATTEMPTS < 1 )) \
             || (( NETLIFY_POLL_ATTEMPTS > 60 )); then
             echo "::error::NETLIFY_POLL_ATTEMPTS는 1~60 사이의 정수여야 합니다."
             exit 1
           fi
-
           if [[ ! "$NETLIFY_POLL_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] \
             || (( NETLIFY_POLL_INTERVAL_SECONDS < 5 )) \
             || (( NETLIFY_POLL_INTERVAL_SECONDS > 60 )); then
             echo "::error::NETLIFY_POLL_INTERVAL_SECONDS는 5~60 사이의 정수여야 합니다."
             exit 1
           fi
-
           echo "verification_disabled=false" >> "$GITHUB_OUTPUT"
           echo "should_run=true" >> "$GITHUB_OUTPUT"
-
       - name: Ensure deployment lifecycle labels
         if: steps.input.outputs.issue_number != ''
         env:
@@ -180,19 +155,12 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           gh label create "state:deploying"             --repo "$REPOSITORY"             --color "1D76DB"             --description "TASK is waiting for production deployment verification"             --force
-
           gh label create "state:completed"             --repo "$REPOSITORY"             --color "0E8A16"             --description "TASK completed after production deployment verification"             --force
-
           gh label create "state:deployment-review"             --repo "$REPOSITORY"             --color "FBCA04"             --description "Deployment failure requires review"             --force
-
           gh label create "deployment:ready"             --repo "$REPOSITORY"             --color "0E8A16"             --description "Production deployment is ready"             --force
-
           gh label create "deployment:failed"             --repo "$REPOSITORY"             --color "D73A4A"             --description "Production deployment failed or timed out"             --force
-
           gh label create "deployment:verification-disabled"             --repo "$REPOSITORY"             --color "FBCA04"             --description "Production deployment verification is disabled"             --force
-
       - name: Checkout main for deployment transition
         if: >-
           steps.input.outputs.issue_number != '' &&
@@ -201,11 +169,7 @@ jobs:
             steps.input.outputs.verification_disabled == 'true'
           )
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          ref: main
-          fetch-depth: 1
-          persist-credentials: false
-
+        with: { ref: main, fetch-depth: 1, persist-credentials: false }
       - name: Set up Node.js for deployment transition
         if: >-
           steps.input.outputs.issue_number != '' &&
@@ -214,11 +178,7 @@ jobs:
             steps.input.outputs.verification_disabled == 'true'
           )
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: package-lock.json
-
+        with: { node-version: "22", cache: npm, cache-dependency-path: package-lock.json }
       - name: Install deployment transition dependencies
         if: >-
           steps.input.outputs.issue_number != '' &&
@@ -228,7 +188,6 @@ jobs:
           )
         shell: bash
         run: npm ci --no-audit --no-fund
-
       - name: Record disabled deployment verification
         if: >-
           steps.input.outputs.verification_disabled == 'true' &&
@@ -242,13 +201,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           RESULT_FILE="${RUNNER_TEMP}/deployment-verification-disabled.json"
-
           npm run transition:task-state --             --mode verification-disabled             --issue-number "$ISSUE_NUMBER"             --task-id "$TASK_ID"             --merge-sha "$MERGE_SHA"             --response-file "$RESULT_FILE"
-
           jq empty "$RESULT_FILE"
-
       - name: Validate Netlify configuration
         if: steps.input.outputs.should_run == 'true'
         env:
@@ -257,22 +212,18 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           if [[ -z "${NETLIFY_SITE_ID:-}" ]]; then
             echo "::error::NETLIFY_SITE_ID Secret이 설정되지 않았습니다."
             exit 1
           fi
-
           if [[ "$DRY_RUN" != "true" ]] \
             && [[ -z "${NETLIFY_AUTH_TOKEN:-}" ]]; then
             echo "::error::NETLIFY_AUTH_TOKEN Secret이 설정되지 않았습니다."
             exit 1
           fi
-
           if [[ "$NETLIFY_PRODUCTION_BRANCH" != "main" ]]; then
             echo "::warning::Netlify Production Branch가 main으로 설정되지 않았습니다: ${NETLIFY_PRODUCTION_BRANCH}"
           fi
-
       - name: Dry-run configuration result
         if: >-
           steps.input.outputs.should_run == 'true' &&
@@ -284,7 +235,6 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           {
             echo "# Netlify Status Dry Run"
             echo
@@ -300,7 +250,6 @@ jobs:
             echo
             echo "Netlify API는 호출하지 않았습니다."
           } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Poll Netlify deployment
         id: deploy
         if: >-
@@ -313,10 +262,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           DEPLOYS_FILE="${RUNNER_TEMP}/netlify-deploys.json"
           MATCH_FILE="${RUNNER_TEMP}/netlify-deploy.json"
-
           FOUND=false
           FINAL_STATE=""
           DEPLOY_ID=""
@@ -326,10 +273,8 @@ jobs:
           CONTEXT=""
           BRANCH=""
           COMMIT_REF=""
-
           for ((attempt = 1; attempt <= NETLIFY_POLL_ATTEMPTS; attempt++)); do
             echo "Netlify 배포 확인: ${attempt}/${NETLIFY_POLL_ATTEMPTS}"
-
             HTTP_STATUS="$(
               curl \
                 --silent \
@@ -341,7 +286,6 @@ jobs:
                 --write-out "%{http_code}" \
                 "${NETLIFY_API_BASE_URL}/sites/${NETLIFY_SITE_ID}/deploys?per_page=50"
             )"
-
             if [[ ! "$HTTP_STATUS" =~ ^2[0-9][0-9]$ ]]; then
               API_MESSAGE="$(
                 jq -r \
@@ -350,16 +294,13 @@ jobs:
                   2>/dev/null \
                   || true
               )"
-
               echo "::error::Netlify API 요청 실패 HTTP ${HTTP_STATUS}: ${API_MESSAGE}"
               exit 1
             fi
-
             if ! jq -e 'type == "array"' "$DEPLOYS_FILE" > /dev/null; then
               echo "::error::Netlify API 응답이 Deploy 배열이 아닙니다."
               exit 1
             fi
-
             jq \
               --arg sha "$MERGE_SHA" \
               --arg short_sha "$SHORT_SHA" \
@@ -390,75 +331,59 @@ jobs:
               ' \
               "$DEPLOYS_FILE" \
               > "$MATCH_FILE"
-
             if [[ "$(jq -r 'type' "$MATCH_FILE")" == "object" ]]; then
               FOUND=true
-
               DEPLOY_ID="$(
                 jq -r '.id // empty' \
                   "$MATCH_FILE"
               )"
-
               FINAL_STATE="$(
                 jq -r '.state // "unknown"' \
                   "$MATCH_FILE"
               )"
-
               DEPLOY_URL="$(
                 jq -r '.ssl_url // .url // .deploy_ssl_url // .deploy_url // empty' \
                   "$MATCH_FILE"
               )"
-
               ADMIN_URL="$(
                 jq -r '.admin_url // empty' \
                   "$MATCH_FILE"
               )"
-
               ERROR_MESSAGE="$(
                 jq -r '.error_message // empty' \
                   "$MATCH_FILE"
               )"
-
               CONTEXT="$(
                 jq -r '.context // empty' \
                   "$MATCH_FILE"
               )"
-
               BRANCH="$(
                 jq -r '.branch // empty' \
                   "$MATCH_FILE"
               )"
-
               COMMIT_REF="$(
                 jq -r '.commit_ref // empty' \
                   "$MATCH_FILE"
               )"
-
               echo "Deploy 발견: ${DEPLOY_ID}, state=${FINAL_STATE}"
-
               case "$FINAL_STATE" in
                 ready)
                   break
                   ;;
-
                 error)
                   break
                   ;;
-
                 canceled)
                   break
                   ;;
-
                 *)
                   ;;
               esac
             fi
-
             if (( attempt < NETLIFY_POLL_ATTEMPTS )); then
               sleep "$NETLIFY_POLL_INTERVAL_SECONDS"
             fi
           done
-
           if [[ "$FOUND" != "true" ]]; then
             FINAL_STATE="not-found"
           elif [[ "$FINAL_STATE" != "ready" ]] \
@@ -466,7 +391,6 @@ jobs:
             && [[ "$FINAL_STATE" != "canceled" ]]; then
             FINAL_STATE="timeout"
           fi
-
           {
             echo "found=${FOUND}"
             echo "deploy_id=${DEPLOY_ID}"
@@ -477,7 +401,6 @@ jobs:
             echo "branch=${BRANCH}"
             echo "commit_ref=${COMMIT_REF}"
           } >> "$GITHUB_OUTPUT"
-
           {
             echo "# Netlify Deployment Result"
             echo
@@ -491,7 +414,6 @@ jobs:
             echo "| Branch | \`${BRANCH:-unknown}\` |"
             echo "| Commit ref | \`${COMMIT_REF:-unknown}\` |"
             echo "| Deploy URL | ${DEPLOY_URL:-none} |"
-
             if [[ -n "$ERROR_MESSAGE" ]]; then
               echo
               echo "## Netlify Error"
@@ -503,12 +425,10 @@ jobs:
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-
           if [[ "$FINAL_STATE" != "ready" ]]; then
             echo "::error::Netlify Production Deploy가 ready 상태가 아닙니다: ${FINAL_STATE}"
             exit 1
           fi
-
       - name: Record successful production deployment
         id: transition
         if: >-
@@ -526,13 +446,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           RESULT_FILE="${RUNNER_TEMP}/deployment-completed.json"
-
           npm run transition:task-state --             --mode completed             --issue-number "$ISSUE_NUMBER"             --task-id "$TASK_ID"             --merge-sha "$MERGE_SHA"             --deploy-id "${DEPLOY_ID:-unknown}"             --deploy-url "${DEPLOY_URL:-unknown}"             --deploy-state ready             --response-file "$RESULT_FILE"
-
           jq empty "$RESULT_FILE"
-
       - name: Dispatch next TASK after production deployment
         if: >-
           steps.transition.outcome == 'success' &&
@@ -547,9 +463,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           PAYLOAD_FILE="${RUNNER_TEMP}/deployment-completed-dispatch.json"
-
           jq -n             --arg task_id "$TASK_ID"             --arg task_issue_number "$ISSUE_NUMBER"             --arg merge_sha "$MERGE_SHA"             --arg deploy_id "$DEPLOY_ID"             '{
               event_type: "deployment_completed",
               client_payload: {
@@ -560,9 +474,7 @@ jobs:
                 dry_run: false
               }
             }'             > "$PAYLOAD_FILE"
-
           gh api             --method POST             "repos/${REPOSITORY}/dispatches"             --input "$PAYLOAD_FILE"
-
       - name: Record deployment failure
         if: >-
           failure() &&
@@ -581,9 +493,6 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           RESULT_FILE="${RUNNER_TEMP}/deployment-failed.json"
-
           npm run transition:task-state --             --mode failed             --issue-number "$ISSUE_NUMBER"             --task-id "$TASK_ID"             --merge-sha "$MERGE_SHA"             --deploy-id "${DEPLOY_ID:-not-found}"             --deploy-url "${DEPLOY_URL:-unknown}"             --deploy-state "${DEPLOY_STATE:-workflow-error}"             --workflow-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"             --response-file "$RESULT_FILE"
-
           jq empty "$RESULT_FILE"

@@ -1,0 +1,122 @@
+tasks:
+  - kind: task
+    id: TASK-005
+    title: Complete TASK only after production deployment
+    role: developer
+    type: bug-fix
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Change TASK completion from merge-time completion to production deployment verified completion, while preserving exactly one state label and delaying next-TASK evaluation.
+    depends_on:
+      - TASK-004
+    inputs:
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - operator-guide.md
+      - GitHub Issue
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/scripts/task-state-transition.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    outputs:
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/scripts/task-state-transition.ts
+      - ops/scripts/task-state-transition.test.ts
+      - ops/scripts/deployment-workflow-contract.test.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    acceptance_criteria:
+      - A merged TASK Pull Request transitions its Issue to state:deploying and leaves the Issue open.
+      - Production deployment ready transitions the Issue to state:completed and deployment:ready.
+      - Production deployment ready closes the Issue with completed reason.
+      - Production deployment failure transitions the Issue to state:deployment-review.
+      - Production deployment failure applies deployment:failed and leaves the Issue open.
+      - NETLIFY_STATUS_ENABLED false never marks a TASK completed.
+      - Existing state labels are replaced atomically so exactly one state label remains.
+      - Non-state TASK labels are preserved.
+      - Deployment comments are idempotent by merge SHA and deploy identity.
+      - Next TASK evaluation occurs only after deployment_completed for TASK implementation PRs.
+      - Goal Planner PR processing remains backward compatible.
+      - npm run lint passes.
+      - npm run validate:schemas passes.
+      - npm run validate:task-graph passes.
+      - npm run typecheck passes.
+      - npm test passes.
+      - npm run build passes.
+      - npm run ci passes.
+      - git diff --check passes.
+    allowed_paths:
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/scripts/task-state-transition.ts
+      - ops/scripts/task-state-transition.test.ts
+      - ops/scripts/deployment-workflow-contract.test.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    forbidden_paths:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/06-reconciler.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/schemas/**
+      - package-lock.json
+      - netlify.toml
+      - src/**
+      - content/**
+    forbidden_actions:
+      - Create a real Jules Session.
+      - Start a new Netlify deployment.
+      - Enable AUTOMATION_ENABLED.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Read or print Secret values.
+      - Change the Netlify Site configuration.
+      - Bypass Pull Request validation.
+      - Directly push generated work to main.
+      - Delete tests or weaken validation gates.
+    validation_commands:
+      - npm run lint
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run typecheck
+      - npm test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - deployment-state
+      - task-state
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 16
+      created_at: 2026-06-29T07:12:23.489226Z
+      updated_at: 2026-06-29T07:33:33.927099Z
+      created_by: user
+      tags:
+        - control-plane
+        - deployment
+        - lifecycle
+        - reliability

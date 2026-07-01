@@ -46,18 +46,6 @@
   ],
   "exceptions": [
     {
-      "path": ".github/workflows/02-dispatch-jules.yml",
-      "max_lines": 510,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": ".github/workflows/08-netlify-status.yml",
-      "max_lines": 589,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
       "path": "AGENTS.md",
       "max_lines": 729,
       "follow_up_task": "TASK-016",
@@ -126,12 +114,6 @@
     {
       "path": "ops/roles/verifier.md",
       "max_lines": 549,
-      "follow_up_task": "TASK-016",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
-    },
-    {
-      "path": "ops/tasks/task-history.yaml",
-      "max_lines": 1309,
       "follow_up_task": "TASK-016",
       "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
     }
