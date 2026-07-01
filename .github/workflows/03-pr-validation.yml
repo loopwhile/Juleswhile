@@ -264,13 +264,37 @@ jobs:
           if [[ "$RESULT" == "success" ]]; then
             RESULT_LABEL="validation:passed"
             EVENT_TYPE="pr_validation_passed"
+            EVIDENCE_RESULT="passed"
           else
             RESULT_LABEL="validation:failed"
             EVENT_TYPE="pr_validation_failed"
+            EVIDENCE_RESULT="failed"
           fi
 
-          jq -n --arg label "$RESULT_LABEL" '{labels:[$label]}' \
-            | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
+          jq -n \
+            --arg managed "juleswhile:managed" \
+            --arg result "$RESULT_LABEL" \
+            '{labels:[$managed,$result]}' \
+            | gh api \
+                --method POST \
+                "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" \
+                --input - \
+                >/dev/null
+
+          EVIDENCE_FILE="${RUNNER_TEMP}/validation-evidence.md"
+
+          {
+            echo '<!-- juleswhile:validation-evidence -->'
+            echo '```text'
+            echo "head_sha: ${HEAD_SHA}"
+            echo "result: ${EVIDENCE_RESULT}"
+            echo "run_url: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo '```'
+          } > "$EVIDENCE_FILE"
+
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file "$EVIDENCE_FILE"
 
           if [[ "$CONTROL_PLANE" == "true" ]]; then
             jq -n '{labels:["risk:control-plane","human-approval-required"]}' \

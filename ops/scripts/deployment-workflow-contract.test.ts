@@ -16,6 +16,28 @@ test("Auto Merge transitions TASK to deploying", async () => {
   assert(!content.includes("- name: Complete linked TASK Issue"));
 });
 
+test("PR Validation publishes managed exact-head evidence", async () => {
+  const content = await workflow(
+    ".github/workflows/03-pr-validation.yml",
+  );
+
+  assert(
+    content.includes('--arg managed "juleswhile:managed"'),
+  );
+  assert(
+    content.includes("'{labels:[$managed,$result]}'"),
+  );
+  assert(
+    content.includes(
+      "<!-- juleswhile:validation-evidence -->",
+    ),
+  );
+  assert(content.includes('echo "head_sha: ${HEAD_SHA}"'));
+  assert(
+    content.includes('echo "result: ${EVIDENCE_RESULT}"'),
+  );
+});
+
 test("Next TASK recognizes deployment_completed", async () => {
   const content = await workflow(
     ".github/workflows/05-next-task.yml",
