@@ -146,7 +146,7 @@
     "activeSessions": [],
     "activePullRequests": [],
     "resourceLocks": [],
-    "lastReconciledAt": "2026-07-01T16:19:00.000Z"
+    "lastReconciledAt": "2026-07-01T16:31:30.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -168,23 +168,23 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T16:19:00.000Z",
-    "runUrl": null
+    "occurredAt": "2026-07-01T16:31:30.000Z",
+    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28532568232"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T16:19:00.000Z",
+  "updatedAt": "2026-07-01T16:31:30.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T16:19:00.000Z",
-    "generatedAt": "2026-07-01T16:19:00.000Z",
-    "evidenceDigest": "sha256:1b59ec4c58efac9e4163073bb589b18250fd67dc3c1e951b33837f16888e41dd",
+    "observedAt": "2026-07-01T16:31:30.000Z",
+    "generatedAt": "2026-07-01T16:31:30.000Z",
+    "evidenceDigest": "sha256:f6814dc60903be255fe5ae0c1e236bdadf39b954663cf33bc141a7b01bfbc2b4",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": null,
-    "syncReason": "task-014-final-completion-rebuild",
+    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28532568232",
+    "syncReason": "issues",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
-      "supersededIssues": 2,
+      "supersededIssues": 3,
       "manifestMismatches": 0,
       "issueLifecycleMismatches": 0,
       "sessionLookupErrors": 0
