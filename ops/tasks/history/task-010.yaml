@@ -1,0 +1,100 @@
+tasks:
+  - kind: task
+    id: TASK-010
+    title: Improve Juleswhile clone-init template workflow
+    role: developer
+    type: maintenance
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Improve the Juleswhile template so new projects can start with the clone/init/bootstrap workflow, then operate through GitHub Issues, Jules, PR validation, auto-merge, Netlify deployment verification, and a static operational dashboard.
+    depends_on:
+      - TASK-009
+    inputs:
+      - "GitHub Issue #66"
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - QUICKSTART.md
+      - README.md
+      - operator-guide.md
+      - ops/tasks/task-index.yaml
+      - ops/scripts/**
+      - ops/schemas/task.schema.json
+      - .github/workflows/**
+      - netlify.toml
+    outputs:
+      - QUICKSTART.md
+      - README.md
+      - operator-guide.md
+      - ops/tasks/task-index.yaml
+      - ops/tasks/task-history.yaml
+      - ops/tasks/task-templates.yaml
+      - ops/scripts/**
+      - ops/schemas/task.schema.json
+      - ops/state/project-state.json
+      - package.json
+      - dist/index.html
+    acceptance_criteria:
+      - QUICKSTART no longer rejects clone/init and documents the canonical clone/init bootstrap path.
+      - TASK manifest schema accepts optional includes while preserving inline tasks.
+      - Validation and runtime scripts load TASK data through a shared merged manifest loader.
+      - Self-improvement templates are disabled by default and require human or human-before-execution approval.
+      - Dashboard build renders project status, task counts, quotas, active sessions, PRs, Netlify state, blocked items, and next action without token values.
+      - Required validation commands pass or any failures are documented.
+    allowed_paths:
+      - QUICKSTART.md
+      - README.md
+      - operator-guide.md
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - ops/tasks/**
+      - ops/scripts/**
+      - ops/schemas/task.schema.json
+      - ops/state/project-state.json
+      - package.json
+      - package-lock.json
+      - netlify.toml
+      - .github/workflows/**
+    forbidden_paths:
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - src/auth/**
+      - src/payment/**
+      - content/**
+    forbidden_actions:
+      - Enable AUTOMATION_ENABLED or CONTENT_AUTOMATION_ENABLED.
+      - Expose, request, or log secrets.
+      - Bypass Pull Request validation or directly merge work.
+      - Create paid infrastructure or external deployment resources.
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run validate:supply-chain
+      - npm run typecheck
+      - npm test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - template-runtime
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 120
+    stitch:
+      allowed: false
+    metadata:
+      goal_issue_number: 1
+      issue_number: 66
+      created_at: 2026-07-01T09:00:00Z
+      updated_at: 2026-07-01T10:30:43.000Z
+      created_by: user
+      tags:
+        - control-plane
+        - template
+        - bootstrap
+        - dashboard

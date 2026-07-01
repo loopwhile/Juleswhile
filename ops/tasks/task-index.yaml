@@ -1,7 +1,7 @@
 schema_version: 1
 project_id: juleswhile
 generated_at: 2026-06-27T00:00:00+09:00
-updated_at: 2026-07-01T15:01:39Z
+updated_at: 2026-07-01T19:00:04Z
 defaults:
   approval_policy: reviewer
   risk_level: medium
@@ -11,8 +11,20 @@ defaults:
     timeout_minutes: 60
 includes:
   - task-templates.yaml
-  - task-history.yaml
+  - history/task-001.yaml
+  - history/task-002.yaml
+  - history/task-003.yaml
+  - history/task-004.yaml
+  - history/task-005.yaml
+  - history/task-006.yaml
+  - history/task-007.yaml
+  - history/task-008.yaml
+  - history/task-009.yaml
+  - history/task-010.yaml
+  - history/task-011.yaml
+  - history/task-012.yaml
   - history/task-013.yaml
   - history/task-014.yaml
   - history/task-015.yaml
+  - history/task-016.yaml
 tasks: []

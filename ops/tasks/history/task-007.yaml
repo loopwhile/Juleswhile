@@ -1,0 +1,128 @@
+tasks:
+  - kind: task
+    id: TASK-007
+    title: Rebuild runtime state projection
+    role: developer
+    type: maintenance
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Rebuild the committed runtime state projection deterministically from canonical GitHub Issues, Pull Requests, Jules Session observations, resource locks, and quota ledger evidence.
+    depends_on:
+      - TASK-006
+    inputs:
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - operator-guide.md
+      - GitHub Issue
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - ops/schemas/project-state.schema.json
+      - ops/scripts/reconcile-project.ts
+      - ops/scripts/validate-task-graph.ts
+      - .github/workflows/06-reconciler.yml
+    outputs:
+      - ops/scripts/project-state-projection.ts
+      - ops/scripts/project-state-projection.test.ts
+      - ops/scripts/rebuild-project-state.ts
+      - ops/scripts/validate-task-graph.ts
+      - .github/workflows/06-reconciler.yml
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    acceptance_criteria:
+      - Manifest metadata.issue_number defines the canonical Issue for each TASK ID.
+      - Duplicate and superseded TASK Issues are excluded from canonical task counts.
+      - Multiple state labels are reported as Projection drift.
+      - Runtime state label priority is deterministic.
+      - taskSummary lifecycle values are derived from canonical GitHub Issues.
+      - taskSummary lifecycle values sum exactly to taskSummary.total.
+      - Active Jules Sessions are reconstructed from canonical Session markers and Jules API observations.
+      - Active Pull Requests are reconstructed from open repository Pull Requests.
+      - Resource locks are reconstructed for active TASKs.
+      - Quota usage is reconstructed from latest append-only ledger outcomes.
+      - Dry-run reports drift without modifying project-state.json.
+      - Apply mode writes project-state.json only when material state changes.
+      - Projection output passes project-state JSON Schema validation before replacement.
+      - Projection failure preserves the last valid snapshot.
+      - Identical source evidence produces identical Projection output.
+      - npm run lint passes.
+      - npm run validate:schemas passes.
+      - npm run validate:task-graph passes.
+      - npm run typecheck passes.
+      - npm test passes.
+      - npm run build passes.
+      - npm run ci passes.
+      - git diff --check passes.
+    allowed_paths:
+      - .github/workflows/06-reconciler.yml
+      - ops/scripts/project-state-projection.ts
+      - ops/scripts/project-state-projection.test.ts
+      - ops/scripts/rebuild-project-state.ts
+      - ops/scripts/validate-task-graph.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    forbidden_paths:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/08-netlify-status.yml
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/schemas/**
+      - package-lock.json
+      - netlify.toml
+      - src/**
+      - content/**
+    forbidden_actions:
+      - Create a real Jules Session.
+      - Enable AUTOMATION_ENABLED.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Read or print Secret values.
+      - Overwrite project-state.json before Schema validation.
+      - Count superseded TASK Issues as canonical runtime state.
+      - Treat Manifest READY and BLOCKED counts as runtime authority.
+      - Change Netlify configuration.
+      - Bypass Pull Request validation.
+      - Directly push Jules-generated work to main.
+      - Delete tests or weaken validation gates.
+    validation_commands:
+      - npm run lint
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run typecheck
+      - npm test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - reconciler
+      - runtime-state
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 20
+      created_at: 2026-06-29T08:10:26.039509Z
+      updated_at: 2026-06-29T09:11:31Z
+      created_by: user
+      tags:
+        - control-plane
+        - reconciler
+        - runtime-state
+        - projection
+        - recovery

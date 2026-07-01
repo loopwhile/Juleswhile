@@ -1,0 +1,165 @@
+tasks:
+  - kind: task
+    id: TASK-016
+    title: Modularize workflows, manifests and root documentation
+    role: solution-architect
+    type: refactoring
+    status: PR_OPENED
+    priority: P0
+    enabled: true
+    objective: Split oversized GitHub Workflows, TASK History, root operational documents, Role documents and Prompt documents while removing every TASK-016 source-size exception without changing Runtime behavior.
+    depends_on:
+      - TASK-015
+    inputs:
+      - docs/04_architecture/architecture-baseline.md
+      - ops/config/source-size-baseline.json
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/tasks/task-history.yaml
+      - ops/tasks/task-index.yaml
+      - README.md
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - operator-guide.md
+      - ops/prompts/goal-intake.md
+      - ops/roles/developer.md
+      - ops/roles/marketer.md
+      - ops/roles/project-planner.md
+      - ops/roles/reviewer.md
+      - ops/roles/solution-architect.md
+      - ops/roles/ux-designer.md
+      - ops/roles/verifier.md
+    outputs:
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/application/**
+      - ops/domain/**
+      - ops/ports/**
+      - ops/infrastructure/**
+      - ops/scripts/**
+      - ops/config/source-size-baseline.json
+      - ops/tasks/task-index.yaml
+      - ops/tasks/history/**
+      - ops/state/project-state.json
+      - README.md
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - OPERATOR-GUIDE-*.md
+      - ops/prompts/**
+      - ops/roles/**
+      - package.json
+      - package-lock.json
+      - tsconfig.json
+    acceptance_criteria:
+      - Reduce 02-dispatch-jules.yml and 08-netlify-status.yml to at most 500 lines without changing triggers, permissions, action pins or Runtime semantics.
+      - Split TASK-001 through TASK-012 into individually owned History Manifest files.
+      - Remove ops/tasks/task-history.yaml after preserving every TASK contract, status, dependency and metadata field.
+      - Keep README.md at the repository root and reduce it without moving its content into docs.
+      - Replace operator-guide.md with numbered OPERATOR-GUIDE-01 through OPERATOR-GUIDE-09 files at the repository root.
+      - Keep OPERATOR-GUIDE-01-OVERVIEW.md as the Operator Guide index.
+      - Do not add new operational documentation under docs.
+      - Preserve the essential repository and execution invariants in AGENTS.md.
+      - Preserve the Project Goal contract in PROJECT_GOAL.md.
+      - Preserve each Role and Prompt execution contract while removing duplication.
+      - Extend the Source Size scope to validate OPERATOR-GUIDE-*.md.
+      - Keep every managed source, Workflow, Manifest, operational document, Role and Prompt file at or below 500 lines.
+      - Remove all fifteen TASK-016 entries from the Source Size Baseline.
+      - Preserve TASK, Runtime Projection, Jules Dispatch and Netlify external behavior.
+      - Pass schema, task graph, source-size, supply-chain, lint, typecheck, unit, build and full CI validation.
+      - Synchronize TASK-016 registration into committed Project State through Runtime Projection.
+    allowed_paths:
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/application/**
+      - ops/domain/**
+      - ops/ports/**
+      - ops/infrastructure/**
+      - ops/scripts/**
+      - ops/config/source-size-baseline.json
+      - ops/tasks/task-index.yaml
+      - ops/tasks/task-history.yaml
+      - ops/tasks/history/**
+      - ops/state/project-state.json
+      - README.md
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - operator-guide.md
+      - OPERATOR-GUIDE-*.md
+      - ops/prompts/**
+      - ops/roles/**
+      - package.json
+      - package-lock.json
+      - tsconfig.json
+    forbidden_paths:
+      - src/**
+      - content/**
+      - public/**
+      - docs/**
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/06-reconciler.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/09-preflight.yml
+      - .github/workflows/10-runtime-projection-sync.yml
+    forbidden_actions:
+      - Do not add operational documentation under docs.
+      - Do not change Workflow triggers, permissions or pinned action revisions.
+      - Do not change TASK state-machine semantics.
+      - Do not change Quota budgets or Jules Session creation rules.
+      - Do not change Runtime Projection or Dashboard freshness semantics.
+      - Do not change Netlify deployment success or failure semantics.
+      - Do not alter existing TASK contract meaning while splitting Manifest files.
+      - Do not expose, request or print Secret values.
+      - Do not add or increase a Source Size exception.
+      - Do not push directly to main.
+      - Do not merge without exact-head validation evidence.
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run validate:source-size
+      - npm run validate:supply-chain
+      - npm run lint
+      - npm run typecheck
+      - npm run test:unit
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane-architecture
+      - workflow-contracts
+      - task-manifest
+      - root-documentation
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 300
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 179
+      created_at: 2026-07-01T19:00:04Z
+      updated_at: 2026-07-01T19:23:01.000Z
+      created_by: user
+      tags:
+        - architecture
+        - refactoring
+        - workflow
+        - task-manifest
+        - root-documentation
+        - role-prompt
+        - source-size
+        - technical-debt
+      template_id: null
+      instance_key: null
+generated_at: 2026-07-01T19:00:04Z
+updated_at: 2026-07-01T19:00:04Z

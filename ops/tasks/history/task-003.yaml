@@ -1,0 +1,107 @@
+tasks:
+  - kind: task
+    id: TASK-003
+    title: Implement quota ledger and dispatch intent idempotency
+    role: developer
+    type: bug-fix
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Harden Juleswhile runtime execution accounting so TASK selection, quota reservation, Jules Session creation, and stale dispatch recovery are based on append-only GitHub runtime evidence rather than mutable project-state quota counters or post-hoc session comments alone.
+    depends_on: []
+    inputs:
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - GitHub Issue
+      - ops/scripts/select-next-task.ts
+      - ops/scripts/dispatch-jules.ts
+      - ops/scripts/reconcile-project.ts
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/05-next-task.yml
+      - ops/state/project-state.json
+    outputs:
+      - ops/scripts/select-next-task.ts
+      - ops/scripts/dispatch-jules.ts
+      - ops/scripts/reconcile-project.ts
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/05-next-task.yml
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    acceptance_criteria:
+      - TASK selection counts same-day quota reservations and committed Jules Sessions from GitHub Issue comments, not only project-state.json.
+      - TASK selection writes an append-only quota reservation marker before dispatching a TASK.
+      - Quota markers include date, category, TASK ID, Issue number, workflow run URL or ID, and reservation status.
+      - Jules dispatch records an append-only dispatch intent marker before calling the Jules API.
+      - Successful Jules Session creation commits the quota reservation and links it to the Session ID and name.
+      - Failed Jules Session creation releases or invalidates the quota reservation with a reason.
+      - If a dispatch intent exists but no Session marker exists, the dispatcher does not create another Session automatically unless the previous attempt is explicitly released or reconciled.
+      - Reconciler distinguishes stale reservation, dispatch intent, committed session, released quota, and unknown dispatch outcome before restoring state:ready.
+      - Existing successful task-dispatch markers remain backward compatible.
+      - npm run validate:schemas passes.
+      - npm run validate:task-graph passes.
+      - npm run typecheck passes.
+      - npm run build passes.
+      - npm run ci passes.
+      - git diff --check passes.
+    allowed_paths:
+      - ops/scripts/select-next-task.ts
+      - ops/scripts/dispatch-jules.ts
+      - ops/scripts/reconcile-project.ts
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/05-next-task.yml
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    forbidden_paths:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/06-reconciler.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/08-netlify-status.yml
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/schemas/**
+      - package.json
+      - package-lock.json
+      - netlify.toml
+      - src/**
+      - content/**
+    forbidden_actions:
+      - Enable AUTOMATION_ENABLED.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Modify Secrets or expose credentials.
+      - Change Netlify site configuration.
+      - Bypass Pull Request validation.
+      - Directly push Jules-generated work to main.
+      - Delete existing tests or weaken validation gates.
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run typecheck
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - jules-dispatch
+      - quota-ledger
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+    metadata:
+      goal_issue_number: 1
+      issue_number: 11
+      created_at: 2026-06-28T11:57:48Z
+      updated_at: 2026-06-28T12:13:00Z
+      created_by: project-planner
+      tags:
+        - control-plane
+        - quota
+        - dispatch-idempotency
+        - reliability
