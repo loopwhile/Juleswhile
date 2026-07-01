@@ -4,6 +4,7 @@ import test from "node:test";
 import {
 	assertInOrder,
 	extractBashBlocks,
+	validateForbiddenPatterns,
 	validateOperatorGuides,
 } from "./validate-operator-guides.js";
 
@@ -69,6 +70,31 @@ test("committed Operator Guides satisfy repository contracts", () => {
 		() =>
 			validateOperatorGuides(
 				process.cwd(),
+			),
+	);
+});
+
+
+test("legacy read -rsp secret input is rejected", () => {
+	assert.throws(
+		() =>
+			validateForbiddenPatterns(
+				"guide.md",
+				'read -rsp "Secret: " SECRET',
+			),
+		/explicit terminal binding/u,
+	);
+});
+
+test("terminal-bound secret input is accepted", () => {
+	assert.doesNotThrow(
+		() =>
+			validateForbiddenPatterns(
+				"guide.md",
+				[
+					"printf 'Secret: ' >&2",
+					"IFS= read -r -s SECRET </dev/tty",
+				].join("\n"),
 			),
 	);
 });

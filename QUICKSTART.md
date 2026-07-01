@@ -31,10 +31,13 @@ export PROJECT_ID="ai-tech-blog"
 export PROJECT_NAME="AI Tech Blog"
 export REPOSITORY="${GITHUB_OWNER}/${PROJECT_ID}"
 
+# Preview: the first run should report changed=true.
 node ops/scripts/bootstrap-project.mjs --dry-run
+
+# Apply: the first mutation should report changed=true.
 node ops/scripts/bootstrap-project.mjs --apply
 
-# 멱등성 확인: changed=false가 출력되어야 한다.
+# Idempotency: the repeated apply must report changed=false.
 node ops/scripts/bootstrap-project.mjs --apply
 
 npm run ci
@@ -81,9 +84,17 @@ Settings -> Actions -> General -> Workflow permissions -> Read and write permiss
 Allow the Jules GitHub App to access the new repository, then register the API key as a secret.
 
 ```bash
-read -rsp "Jules API Key: " JULES_API_KEY
-echo
-printf '%s' "$JULES_API_KEY" | gh secret set JULES_API_KEY --repo "$REPOSITORY"
+printf 'Jules API Key: ' >&2
+IFS= read -r -s JULES_API_KEY </dev/tty
+printf '\n' >&2
+
+[[ -n "$JULES_API_KEY" ]] || {
+  echo "ERROR: Jules API Key is empty." >&2
+  exit 1
+}
+
+printf '%s' "$JULES_API_KEY" |
+  gh secret set JULES_API_KEY     --repo "$REPOSITORY"
 ```
 
 Select the exact Jules Source name from the API response.

@@ -80,10 +80,13 @@ Juleswhile 원본에는 Control Plane과 Production E2E 검증 기록이 들어 
 ```bash
 npm ci
 
+# 변경 예정 확인: 최초 실행에서는 changed=true가 예상된다.
 node ops/scripts/bootstrap-project.mjs --dry-run
+
+# 실제 초기화: 최초 적용에서는 changed=true가 예상된다.
 node ops/scripts/bootstrap-project.mjs --apply
 
-# 멱등성 확인: changed=false가 출력되어야 한다.
+# 멱등성 확인: 동일 입력에서는 changed=false가 출력되어야 한다.
 node ops/scripts/bootstrap-project.mjs --apply
 
 npm run ci
@@ -174,8 +177,14 @@ API Key만 등록해도 GitHub 저장소 접근 권한이 자동으로 생기지
 Jules Settings에서 API Key를 생성한다.
 터미널에서 임시 입력:
 ```bash
-read -rsp "Jules API Key: " JULES_API_KEY
-echo
+printf 'Jules API Key: ' >&2
+IFS= read -r -s JULES_API_KEY </dev/tty
+printf '\n' >&2
+
+[[ -n "$JULES_API_KEY" ]] || {
+  echo "ERROR: Jules API Key가 비어 있습니다." >&2
+  exit 1
+}
 ```
 GitHub Secret 등록:
 ```bash

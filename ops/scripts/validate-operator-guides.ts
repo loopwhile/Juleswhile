@@ -21,6 +21,7 @@ import {
 export {
 	assertInOrder,
 	extractBashBlocks,
+	validateForbiddenPatterns,
 } from "./operator-guide-validation-core.js";
 
 function validateBootstrapOrder(
@@ -40,7 +41,8 @@ function validateBootstrapOrder(
 			"git remote add origin",
 			"git commit",
 			"git push -u origin main",
-			'read -rsp "Jules API Key:',
+			"printf 'Jules API Key: ' >&2",
+			"IFS= read -r -s JULES_API_KEY </dev/tty",
 			"jules.googleapis.com/v1alpha/sources",
 			"gh variable set JULES_SOURCE_NAME",
 			"unset JULES_API_KEY",
@@ -61,7 +63,8 @@ function validateBootstrapOrder(
 			"git remote add origin",
 			"git commit",
 			"git push -u origin main",
-			'read -rsp "Jules API Key:',
+			"printf 'Jules API Key: ' >&2",
+			"IFS= read -r -s JULES_API_KEY </dev/tty",
 			"jules.googleapis.com/v1alpha/sources",
 			"gh variable set JULES_SOURCE_NAME",
 			"unset JULES_API_KEY",
@@ -151,6 +154,10 @@ export function validateOperatorGuides(
 		root,
 		"OPERATOR-GUIDE-02-BOOTSTRAP.md",
 	);
+	const deploymentGuide = readDocument(
+		root,
+		"OPERATOR-GUIDE-06-DEPLOYMENT.md",
+	);
 
 	validateBootstrapOrder(
 		quickstart,
@@ -169,6 +176,46 @@ export function validateOperatorGuides(
 		if (!bootstrapGuide.includes(required)) {
 			throw new Error(
 				`Operator Guide Bootstrap contract is missing: ${required}`,
+			);
+		}
+	}
+
+	const terminalInputContracts: Array<
+		[string, string, string]
+	> = [
+		[
+			"QUICKSTART.md",
+			quickstart,
+			"IFS= read -r -s JULES_API_KEY </dev/tty",
+		],
+		[
+			"OPERATOR-GUIDE-02-BOOTSTRAP.md",
+			bootstrapGuide,
+			"IFS= read -r -s JULES_API_KEY </dev/tty",
+		],
+		[
+			"OPERATOR-GUIDE-06-DEPLOYMENT.md",
+			deploymentGuide,
+			"IFS= read -r -s NETLIFY_AUTH_TOKEN </dev/tty",
+		],
+		[
+			"OPERATOR-GUIDE-06-DEPLOYMENT.md",
+			deploymentGuide,
+			"IFS= read -r -s NETLIFY_SITE_ID </dev/tty",
+		],
+	];
+
+	for (
+		const [
+			documentName,
+			content,
+			required,
+		]
+		of terminalInputContracts
+	) {
+		if (!content.includes(required)) {
+			throw new Error(
+				`${documentName}: terminal-bound secret input is missing: ${required}`,
 			);
 		}
 	}

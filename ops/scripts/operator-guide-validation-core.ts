@@ -322,6 +322,10 @@ export function validateForbiddenPatterns(
 			"hard-coded Jules Source example",
 		],
 		[
+			/\bread\s+-rsp\b/u,
+			"combined read -rsp secret input without explicit terminal binding",
+		],
+		[
 			/node <<'NODE'/u,
 			"Node stdin execution without --input-type=module",
 		],
