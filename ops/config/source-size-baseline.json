@@ -130,12 +130,6 @@
       "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
     },
     {
-      "path": "ops/scripts/dispatch-jules.ts",
-      "max_lines": 1823,
-      "follow_up_task": "TASK-015",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
-    },
-    {
       "path": "ops/scripts/materialize-issues.ts",
       "max_lines": 1442,
       "follow_up_task": "TASK-015",
