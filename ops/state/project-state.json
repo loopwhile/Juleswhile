@@ -172,5 +172,22 @@
     "runUrl": "https://github.com/loopwhile/Juleswhile/issues/75"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T12:53:48Z"
+  "updatedAt": "2026-07-01T12:53:48Z",
+  "projection": {
+    "status": "current",
+    "observedAt": "2026-07-01T12:53:48Z",
+    "generatedAt": "2026-07-01T12:53:48Z",
+    "evidenceDigest": "sha256:f55affde0a75a09b9120414ffeee357ebd141b94cbd00a1c11f7e53e7b53d20b",
+    "source": "github-runtime-evidence",
+    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/issues/75",
+    "syncReason": "task-registration",
+    "drift": {
+      "stateLabelConflicts": 0,
+      "missingCanonicalIssues": 0,
+      "supersededIssues": 0,
+      "manifestMismatches": 0,
+      "issueLifecycleMismatches": 0,
+      "sessionLookupErrors": 0
+    }
+  }
 }

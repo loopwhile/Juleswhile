@@ -435,6 +435,12 @@ async function main(): Promise<void> {
 		pullRequests,
 		sessionsByName: sessionObservation.sessionsByName,
 		runUrl: process.env.WORKFLOW_RUN_URL ?? null,
+		syncReason:
+		  process.env.PROJECTION_SYNC_REASON ??
+		  process.env.GITHUB_EVENT_NAME ??
+		  "runtime-projection-sync",
+		sessionLookupErrors:
+		  sessionObservation.errors.length,
 	};
 
 	const projection = projectRuntimeState(input);
