@@ -169,7 +169,7 @@
     "taskId": null,
     "issueNumber": null,
     "occurredAt": "2026-07-01T17:53:50.000Z",
-    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28537193322"
+    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28537248121"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
   "updatedAt": "2026-07-01T17:53:50.000Z",
@@ -177,9 +177,9 @@
     "status": "current",
     "observedAt": "2026-07-01T17:53:50.000Z",
     "generatedAt": "2026-07-01T17:53:50.000Z",
-    "evidenceDigest": "sha256:157cba34343759348f6c7dbb5b4360c8e425643e2c9ef78c4b07be16dc19119a",
+    "evidenceDigest": "sha256:5e3acc456c45fc0c65d9f6a5ba667fdb21fc8a9b9624588d0dc740d6c203584c",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28537193322",
+    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28537248121",
     "syncReason": "repository_dispatch",
     "drift": {
       "stateLabelConflicts": 0,
