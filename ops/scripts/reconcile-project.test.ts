@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
+import { stringify as stringifyYaml } from "yaml";
 
 const execFileAsync = promisify(execFile);
 
@@ -142,6 +143,44 @@ async function runReconciler(config: MockConfig): Promise<{
   comments: MockComment[];
   incidents: unknown[];
 }> {
+  const directory = await mkdtemp(
+    path.join(tmpdir(), "juleswhile-reconcile-"),
+  );
+
+  const taskIndexFile = path.join(directory, "task-index.yaml");
+
+  const mockTaskIndex = {
+    schema_version: 1,
+    project_id: "test-project",
+    tasks: [
+      {
+        id: "TASK-004",
+        kind: "task",
+        title: "Reconcile runtime state with Jules API sessions",
+        status: "RUNNING",
+        enabled: true,
+        depends_on: [],
+        inputs: [],
+        outputs: [],
+        allowed_paths: ["*"],
+        forbidden_paths: [],
+        validation_commands: ["npm test"],
+        acceptance_criteria: ["Done"],
+        risk_level: "low",
+        approval_policy: "automatic",
+        parallelizable: false,
+        resource_locks: [],
+        conflicts_with: [],
+      },
+    ],
+  };
+
+  await writeFile(
+    taskIndexFile,
+    stringifyYaml(mockTaskIndex),
+    "utf8",
+  );
+
   const issue = makeIssue(config.labels);
   const comments = [...config.comments];
   const incidents: unknown[] = [];
@@ -301,9 +340,6 @@ async function runReconciler(config: MockConfig): Promise<{
   });
 
   try {
-    const directory = await mkdtemp(
-      path.join(tmpdir(), "juleswhile-reconcile-"),
-    );
     const responseFile = path.join(directory, "result.json");
 
     await execFileAsync(
@@ -314,6 +350,8 @@ async function runReconciler(config: MockConfig): Promise<{
         "ops/scripts/reconcile-project.ts",
         "--response-file",
         responseFile,
+        "--task-index",
+        taskIndexFile,
         "--stale-running-minutes",
         "10",
         "--stale-dispatching-minutes",

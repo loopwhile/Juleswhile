@@ -18,6 +18,12 @@ const GOAL_ID_PATTERN = /^GOAL-[0-9]+$/;
 
 const CORRECTION_ID_PATTERN = /^CORRECTION-[A-Z0-9-]+$/;
 
+const MAINTENANCE_ID_PATTERN = /^MAINTENANCE$/;
+
+const TEMPLATE_ID_PATTERN = /^TEMPLATE$/;
+
+const DRAFT_ID_PATTERN = /^DRAFT$/;
+
 const COMPLETED_STATUSES = new Set(["COMPLETED", "MERGED"]);
 
 interface CliOptions {
@@ -647,6 +653,19 @@ async function validatePrScope(
 				);
 			}
 		}
+	} else if (
+		MAINTENANCE_ID_PATTERN.test(taskId) ||
+		TEMPLATE_ID_PATTERN.test(taskId)
+	) {
+		const protectedChange = changedFiles.filter((file) =>
+			protectedPatterns.some((pattern) => matchesPattern(file, pattern)),
+		);
+
+		if (protectedChange.length > 0) {
+			warnings.push(
+				`${taskId}: 제어 평면 변경이 포함되어 있습니다. 사람 승인이 필요합니다.`,
+			);
+		}
 	} else if (GOAL_ID_PATTERN.test(taskId)) {
 		const goalAllowedPatterns = [
 			"PROJECT_GOAL.md",
@@ -680,6 +699,8 @@ async function validatePrScope(
 		warnings.push(
 			"Correction PR의 세부 허용 경로는 원본 TASK와 Reviewer가 추가 검증해야 합니다.",
 		);
+	} else if (DRAFT_ID_PATTERN.test(taskId)) {
+		warnings.push("Draft PR validation: 상세 범위 검증을 건너뜁니다.");
 	} else {
 		errors.push(`지원하지 않는 PR 식별자입니다: ${taskId}`);
 	}

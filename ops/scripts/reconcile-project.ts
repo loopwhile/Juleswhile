@@ -71,6 +71,7 @@ const TRANSIENT_API_ERROR_KINDS = new Set([
 
 interface CliOptions {
   responseFile: string;
+  taskIndexPath: string;
   staleDispatchingMinutes: number;
   staleRunningMinutes: number;
   staleValidatingMinutes: number;
@@ -222,6 +223,8 @@ function parseArguments(
   let responseFile =
     process.env.RESPONSE_FILE ?? "";
 
+  let taskIndexPath = TASK_INDEX_PATH;
+
   let staleDispatchingMinutes = 20;
   let staleRunningMinutes = 180;
   let staleValidatingMinutes = 60;
@@ -240,6 +243,17 @@ function parseArguments(
     switch (argument) {
       case "--response-file": {
         responseFile = requireValue(
+          argv,
+          index,
+          argument,
+        );
+
+        index += 1;
+        break;
+      }
+
+      case "--task-index": {
+        taskIndexPath = requireValue(
           argv,
           index,
           argument,
@@ -364,6 +378,7 @@ function parseArguments(
 
   return {
     responseFile,
+    taskIndexPath,
     staleDispatchingMinutes,
     staleRunningMinutes,
     staleValidatingMinutes,
@@ -518,12 +533,14 @@ async function listComments(
   return comments;
 }
 
-async function readTaskIndex(): Promise<Map<string, TaskContract>> {
-  const content = await fs.readFile(TASK_INDEX_PATH, "utf8");
+async function readTaskIndex(
+  filePath: string,
+): Promise<Map<string, TaskContract>> {
+  const content = await fs.readFile(filePath, "utf8");
   const parsed = parseYaml(content) as TaskIndex;
 
   if (!Array.isArray(parsed.tasks)) {
-    fail(`${TASK_INDEX_PATH}에 tasks 배열이 없습니다.`);
+    fail(`${filePath}에 tasks 배열이 없습니다.`);
   }
 
   return new Map(
@@ -1806,7 +1823,7 @@ async function main(): Promise<void> {
     getRepository();
 
   const taskIndex =
-    await readTaskIndex();
+    await readTaskIndex(options.taskIndexPath);
   const julesClient =
     new JulesApiClient();
 
