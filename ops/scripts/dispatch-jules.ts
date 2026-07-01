@@ -2,6 +2,8 @@
 
 import process from "node:process";
 
+export { assertLiveDispatchContext } from "./session-dispatch-atomicity.js";
+
 import { runDispatchJules } from "../application/dispatch-jules-service.js";
 
 runDispatchJules(process.argv.slice(2)).catch((error: unknown) => {
