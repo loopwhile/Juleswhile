@@ -13,7 +13,9 @@ TASK Issue: #123
 Draft PR은 PR Validation 대상이 아니다.
 계약을 확인한 뒤 Ready로 전환한다.
 ```bash
-gh pr ready <PR_NUMBER> \
+export PR_NUMBER="123"
+
+gh pr ready "$PR_NUMBER" \
   --repo "$REPOSITORY"
 ```
 ---
@@ -61,7 +63,7 @@ jq -n \
   '{labels:["approval:owner-approved"]}' |
 gh api \
   --method POST \
-  "repos/${REPOSITORY}/issues/<PR_NUMBER>/labels" \
+  "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" \
   --input -
 ```
 라벨은 실제 검토 후에만 적용한다.
@@ -82,7 +84,7 @@ gh api \
 ```bash
 gh workflow run "04-auto-merge.yml" \
   --repo "$REPOSITORY" \
-  -f pr_number="<PR_NUMBER>" \
+  -f pr_number="$PR_NUMBER" \
   -f dry_run="false" \
   -f force="false"
 ```

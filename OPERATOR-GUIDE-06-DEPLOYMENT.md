@@ -17,10 +17,34 @@ Publish Directory: dist
 ```
 GitHub Secrets:
 ```bash
-gh secret set NETLIFY_AUTH_TOKEN \
-  --repo "$REPOSITORY"
-gh secret set NETLIFY_SITE_ID \
-  --repo "$REPOSITORY"
+printf 'Netlify Auth Token: ' >&2
+IFS= read -r -s NETLIFY_AUTH_TOKEN </dev/tty
+printf '\n' >&2
+
+printf 'Netlify Site ID: ' >&2
+IFS= read -r -s NETLIFY_SITE_ID </dev/tty
+printf '\n' >&2
+
+[[ -n "$NETLIFY_AUTH_TOKEN" ]] || {
+  echo "ERROR: Netlify Auth Token이 비어 있습니다." >&2
+  exit 1
+}
+
+[[ -n "$NETLIFY_SITE_ID" ]] || {
+  echo "ERROR: Netlify Site ID가 비어 있습니다." >&2
+  exit 1
+}
+
+printf '%s' "$NETLIFY_AUTH_TOKEN" |
+  gh secret set NETLIFY_AUTH_TOKEN \
+    --repo "$REPOSITORY"
+
+printf '%s' "$NETLIFY_SITE_ID" |
+  gh secret set NETLIFY_SITE_ID \
+    --repo "$REPOSITORY"
+
+unset NETLIFY_AUTH_TOKEN
+unset NETLIFY_SITE_ID
 ```
 Repository Variables:
 ```bash

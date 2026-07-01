@@ -38,11 +38,13 @@ gh variable set CONTENT_AUTOMATION_ENABLED \
 * 열린 PR Validation은 계속될 수 있다.
 * 열린 PR Auto Merge를 막으려면 `do-not-merge`를 적용한다.
 ```bash
+export PR_NUMBER="123"
+
 jq -n \
   '{labels:["do-not-merge"]}' |
 gh api \
   --method POST \
-  "repos/${REPOSITORY}/issues/<PR_NUMBER>/labels" \
+  "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" \
   --input -
 ```
 ---
@@ -92,18 +94,20 @@ gh workflow run "05-next-task.yml" \
 * Resource Lock 충돌
 ## 34.3 Draft PR
 ```bash
-gh pr view <PR_NUMBER> \
+export PR_NUMBER="123"
+
+gh pr view "$PR_NUMBER" \
   --repo "$REPOSITORY" \
   --json number,title,isDraft,body,files,url
 ```
 계약 확인 후:
 ```bash
-gh pr ready <PR_NUMBER> \
+gh pr ready "$PR_NUMBER" \
   --repo "$REPOSITORY"
 ```
 ## 34.4 PR Validation 실패
 ```bash
-gh pr checks <PR_NUMBER> \
+gh pr checks "$PR_NUMBER" \
   --repo "$REPOSITORY"
 ```
 원칙:

@@ -56,7 +56,6 @@ jobs:
         ) &&
         !(
           github.event_name == 'repository_dispatch' &&
-          github.event.action == 'pr_validation_passed' &&
           github.event.client_payload.task_id == 'MAINTENANCE'
         )
       }}

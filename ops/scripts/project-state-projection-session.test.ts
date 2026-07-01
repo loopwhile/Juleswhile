@@ -193,3 +193,44 @@ test("Session lookup errors degrade an otherwise valid Projection", () => {
     1,
   );
 });
+
+test("unrelated GitHub evidence does not rewrite a semantically identical Projection", () => {
+	const initialInput = baseInput();
+	const initial = projectRuntimeState(initialInput);
+
+	const repeatedInput = baseInput();
+
+	repeatedInput.currentState = initial.projectState;
+	repeatedInput.runUrl =
+		"https://github.com/loopwhile/Juleswhile/actions/runs/999999";
+	repeatedInput.syncReason = "schedule";
+	repeatedInput.issues = [
+		...repeatedInput.issues,
+		{
+			number: 999,
+			title: "[INCIDENT] Unrelated operational evidence",
+			body: "This Issue does not represent a canonical TASK.",
+			state: "open",
+			html_url:
+				"https://github.com/loopwhile/Juleswhile/issues/999",
+			created_at: "2026-07-01T20:00:00Z",
+			updated_at: "2026-07-01T20:30:00Z",
+			labels: [
+				{
+					name: "incident",
+				},
+				{
+					name: "state:investigating",
+				},
+			],
+		},
+	];
+
+	const repeated = projectRuntimeState(repeatedInput);
+
+	assert.equal(repeated.changed, false);
+	assert.deepEqual(
+		repeated.projectState,
+		initial.projectState,
+	);
+});

@@ -88,7 +88,16 @@ jobs:
           fi
 
           REQUIRED_FILES=(
-            AGENTS.md README.md PROJECT_GOAL.md QUICKSTART.md operator-guide.md package.json package-lock.json
+            AGENTS.md README.md PROJECT_GOAL.md QUICKSTART.md package.json package-lock.json
+            OPERATOR-GUIDE-01-OVERVIEW.md
+            OPERATOR-GUIDE-02-BOOTSTRAP.md
+            OPERATOR-GUIDE-03-RUNTIME-OPERATIONS.md
+            OPERATOR-GUIDE-04-TASK-LIFECYCLE.md
+            OPERATOR-GUIDE-05-PULL-REQUEST-AND-MERGE.md
+            OPERATOR-GUIDE-06-DEPLOYMENT.md
+            OPERATOR-GUIDE-07-PROJECTION-AND-DASHBOARD.md
+            OPERATOR-GUIDE-08-RECOVERY.md
+            OPERATOR-GUIDE-09-TROUBLESHOOTING.md
             .github/workflows/01-goal-intake.yml
             .github/workflows/02-dispatch-jules.yml
             .github/workflows/03-pr-validation.yml

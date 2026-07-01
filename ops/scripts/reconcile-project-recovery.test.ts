@@ -98,3 +98,79 @@ test("incident idempotency marker prevents duplicate incidents", async () => {
 
 	assert.equal(incidents.length, 0);
 });
+
+test("legacy Duplicate TASK Incident prevents another Incident for the same evidence set", async () => {
+	const legacyBody = [
+		"# Duplicate TASK Issue",
+		"",
+		"- TASK: `TASK-004`",
+		"- Canonical Issue: #14",
+		"- Duplicate Issues: #15",
+		"",
+		"Dispatcher idempotency와 Issue materialization 상태를 확인하십시오.",
+	].join("\n");
+
+	const { comments, incidents } = await runReconciler({
+		labels: ["state:ready"],
+		comments: [],
+		additionalIssues: [
+			{
+				number: 15,
+				title:
+					"[TASK-004] Reconcile runtime state with Jules API sessions",
+				body:
+					"<!-- juleswhile:task-id:TASK-004 -->",
+				state: "closed",
+				html_url:
+					"https://github.com/loopwhile/Juleswhile/issues/15",
+				updated_at:
+					"2026-06-28T00:03:00Z",
+				labels: [
+					{
+						name: "juleswhile:task",
+					},
+					{
+						name: "state:blocked",
+					},
+				],
+			},
+		],
+		existingIssues: [
+			{
+				number: 99,
+				title:
+					"[INCIDENT] Duplicate TASK Issue detected for TASK-004",
+				body: legacyBody,
+				state: "open",
+				html_url:
+					"https://github.com/loopwhile/Juleswhile/issues/99",
+				updated_at:
+					"2026-06-28T00:04:00Z",
+				labels: [
+					{
+						name: "incident",
+					},
+					{
+						name: "state:investigating",
+					},
+				],
+			},
+		],
+	});
+
+	assert.equal(incidents.length, 0);
+	assert(
+		comments.some((comment) =>
+			comment.body.includes(
+				"<!-- juleswhile:incident:duplicate-task-TASK-004-canonical-14-duplicates-15 -->",
+			),
+		),
+	);
+	assert(
+		comments.some((comment) =>
+			comment.body.includes(
+				"Existing Incident Evidence Adopted",
+			),
+		),
+	);
+});

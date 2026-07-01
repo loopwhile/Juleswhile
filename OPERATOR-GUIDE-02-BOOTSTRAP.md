@@ -79,7 +79,16 @@ Juleswhile 원본에는 Control Plane과 Production E2E 검증 기록이 들어 
 체크인된 Bootstrap 스크립트를 실행한다. 이 스크립트는 include-aware TASK Manifest를 사용하므로 문서에 별도 초기화 로직을 복제하지 않는다.
 ```bash
 npm ci
-node ops/scripts/bootstrap-project.mjs
+
+# 변경 예정 확인: 최초 실행에서는 changed=true가 예상된다.
+node ops/scripts/bootstrap-project.mjs --dry-run
+
+# 실제 초기화: 최초 적용에서는 changed=true가 예상된다.
+node ops/scripts/bootstrap-project.mjs --apply
+
+# 멱등성 확인: 동일 입력에서는 changed=false가 출력되어야 한다.
+node ops/scripts/bootstrap-project.mjs --apply
+
 npm run ci
 ```
 검증:
@@ -168,8 +177,14 @@ API Key만 등록해도 GitHub 저장소 접근 권한이 자동으로 생기지
 Jules Settings에서 API Key를 생성한다.
 터미널에서 임시 입력:
 ```bash
-read -rsp "Jules API Key: " JULES_API_KEY
-echo
+printf 'Jules API Key: ' >&2
+IFS= read -r -s JULES_API_KEY </dev/tty
+printf '\n' >&2
+
+[[ -n "$JULES_API_KEY" ]] || {
+  echo "ERROR: Jules API Key가 비어 있습니다." >&2
+  exit 1
+}
 ```
 GitHub Secret 등록:
 ```bash
@@ -182,43 +197,50 @@ printf '%s' "$JULES_API_KEY" |
 gh secret list \
   --repo "$REPOSITORY"
 ```
-검증 후 로컬 변수 제거:
-```bash
-unset JULES_API_KEY
-```
-Secret 값이 다시 출력되지 않는 것이 정상이다.
 ---
 # 12. Jules Source 확인
 Source 이름을 추측하지 않는다.
+API 응답에서 현재 `GITHUB_OWNER`와 `GITHUB_REPO`가 정확히 일치하는 Source 하나를 선택한다.
 ```bash
-curl \
-  --fail \
-  --silent \
-  --show-error \
-  --header "x-goog-api-key: ${JULES_API_KEY}" \
-  "https://jules.googleapis.com/v1alpha/sources" |
-  jq '
-    .sources[]? | {
-      name,
-      githubRepo
-    }
-  '
-```
-예시:
-```json
-{
-  "name": "sources/github/OWNER/REPOSITORY",
-  "githubRepo": {
-    "owner": "OWNER",
-    "repo": "REPOSITORY"
-  }
+SOURCES_JSON="$(
+  curl \
+    --fail \
+    --silent \
+    --show-error \
+    --header "x-goog-api-key: ${JULES_API_KEY}" \
+    "https://jules.googleapis.com/v1alpha/sources"
+)"
+
+JULES_SOURCE_NAME="$(
+  jq -er \
+    --arg owner "$GITHUB_OWNER" \
+    --arg repo "$GITHUB_REPO" \
+    '
+      [
+        .sources[]?
+        | select(
+            .githubRepo.owner == $owner
+            and .githubRepo.repo == $repo
+          )
+        | .name
+      ]
+      | if length == 1
+        then .[0]
+        else error(
+          "Expected exactly one matching Jules Source"
+        )
+        end
+    ' <<<"$SOURCES_JSON"
+)"
+
+[[ "$JULES_SOURCE_NAME" == sources/* ]] || {
+  echo "ERROR: Jules Source를 찾지 못했습니다." >&2
+  exit 1
 }
-```
-정확한 값을 등록한다.
-```bash
+
 gh variable set JULES_SOURCE_NAME \
   --repo "$REPOSITORY" \
-  --body "sources/github/OWNER/REPOSITORY"
+  --body "$JULES_SOURCE_NAME"
 ```
 확인:
 ```bash
@@ -234,6 +256,13 @@ gh api \
     | select(.name == "JULES_SOURCE_NAME")
   '
 ```
+검증 후 로컬 변수 제거:
+```bash
+unset JULES_API_KEY
+unset JULES_SOURCE_NAME
+```
+Secret 값이 다시 출력되지 않는 것이 정상이다.
+
 ---
 # 13. Repository Variables
 초기 안전값:

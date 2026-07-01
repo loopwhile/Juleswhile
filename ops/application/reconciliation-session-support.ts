@@ -33,6 +33,7 @@ import {
 import {
 	comment,
 	createIncident,
+	hasIncidentEvidence,
 } from "../infrastructure/github/reconciler-github-adapter.js";
 
 export function shouldPreserveStateOnApiError(error: JulesApiError): boolean {
@@ -94,6 +95,31 @@ export async function createIncidentOnce(
 	const marker = incidentMarker(markerKey);
 
 	if (hasCommentMarker(comments, marker)) {
+		return false;
+	}
+
+	const existing = await hasIncidentEvidence(
+		repository,
+		title,
+		marker,
+		body,
+	);
+
+	if (existing) {
+		await comment(
+			repository,
+			issueNumber,
+			[
+				marker,
+				"",
+				"## Existing Incident Evidence Adopted",
+				"",
+				"An existing Incident already represents this exact evidence set.",
+				"No additional Incident was created.",
+			].join("\n"),
+			options,
+		);
+
 		return false;
 	}
 

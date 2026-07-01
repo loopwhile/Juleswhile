@@ -39,6 +39,11 @@ test("Runtime Projection Workflow prevents recursive Projection runs", async () 
 		/github\.event\.client_payload\.task_id == 'MAINTENANCE'/,
 	);
 
+	assert.doesNotMatch(
+		content,
+		/github\.event\.action == 'pr_validation_passed'\s*&&\s*github\.event\.client_payload\.task_id == 'MAINTENANCE'/,
+	);
+
 	assert.match(content, /group:\s*runtime-projection-sync/);
 
 	assert.match(content, /cancel-in-progress:\s*false/);

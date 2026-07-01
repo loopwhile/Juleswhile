@@ -204,6 +204,38 @@ export async function closeIssue(
 	});
 }
 
+function normalizedIncidentBody(body: string): string {
+	return body
+		.replaceAll("\r\n", "\n")
+		.trim();
+}
+
+export async function hasIncidentEvidence(
+	repository: string,
+	title: string,
+	marker: string,
+	legacyBody: string,
+): Promise<boolean> {
+	const expectedTitle = `[INCIDENT] ${title}`;
+	const expectedLegacyBody =
+		normalizedIncidentBody(legacyBody);
+	const issues = await listIssues(repository);
+
+	return issues.some((issue) => {
+		if (issue.title !== expectedTitle) {
+			return false;
+		}
+
+		const body = issue.body ?? "";
+
+		return (
+			body.includes(marker) ||
+			normalizedIncidentBody(body) ===
+				expectedLegacyBody
+		);
+	});
+}
+
 export async function createIncident(
 	repository: string,
 	title: string,

@@ -63,7 +63,7 @@ Repository Variable만 활성화하고 committed state를 비활성 상태로 �
 git switch -c chore/enable-guarded-automation
 ```
 ```bash
-node <<'NODE'
+node --input-type=module <<'NODE'
 import {
   readFileSync,
   writeFileSync,

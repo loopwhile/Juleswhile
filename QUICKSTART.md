@@ -10,7 +10,8 @@ The only permitted direct push to `main` is the initial repository seed created 
 export PROJECT_ID="ai-tech-blog"
 export PROJECT_NAME="AI Tech Blog"
 export GITHUB_OWNER="YOUR_GITHUB_ID"
-export REPOSITORY="${GITHUB_OWNER}/${PROJECT_ID}"
+export GITHUB_REPO="${PROJECT_ID}"
+export REPOSITORY="${GITHUB_OWNER}/${GITHUB_REPO}"
 
 git clone https://github.com/loopwhile/Juleswhile.git "$PROJECT_ID"
 cd "$PROJECT_ID"
@@ -19,11 +20,7 @@ git init -b main
 git status
 ```
 
-Create the empty GitHub repository before the first push.
-
-```bash
-gh repo create "$REPOSITORY" --private --source . --remote origin
-```
+Do not attach a remote until Bootstrap has completed. This prevents accidental mutation of the Juleswhile Template source repository.
 
 ## 2. Bootstrap The Template Runtime
 
@@ -34,7 +31,15 @@ export PROJECT_ID="ai-tech-blog"
 export PROJECT_NAME="AI Tech Blog"
 export REPOSITORY="${GITHUB_OWNER}/${PROJECT_ID}"
 
-node ops/scripts/bootstrap-project.mjs
+# Preview: the first run should report changed=true.
+node ops/scripts/bootstrap-project.mjs --dry-run
+
+# Apply: the first mutation should report changed=true.
+node ops/scripts/bootstrap-project.mjs --apply
+
+# Idempotency: the repeated apply must report changed=false.
+node ops/scripts/bootstrap-project.mjs --apply
+
 npm run ci
 git diff --check
 git status
@@ -42,22 +47,29 @@ git status
 
 Bootstrap resets project-specific runtime state:
 
-- Completed Juleswhile construction TASK history is removed.
+- Completed Juleswhile construction TASK History shards are removed.
+- A new empty `ops/tasks/task-history.yaml` Runtime Manifest is created.
 - Reusable TASK templates remain available but disabled.
 - Goal, TASK Issue, Session, PR, lock, and quota evidence is cleared.
 - Project ID, package metadata, and repository coordinates are updated.
 - Core automation, content automation, and Netlify status checks remain disabled.
 - Jules max concurrency remains `1` for the smoke phase.
 
-## 3. Initial Main Seed
+## 3. Create Repository And Initial Main Seed
 
-This is the one allowed direct `main` push.
+Create the empty target repository only after Bootstrap and local validation have passed.
 
 ```bash
+gh repo create "$REPOSITORY"   --private   --description "$PROJECT_NAME"
+
+git remote add origin   "https://github.com/${REPOSITORY}.git"
+
 git add .
 git commit -m "chore: seed ${PROJECT_NAME} from Juleswhile"
 git push -u origin main
 ```
+
+This is the one allowed direct `main` push.
 
 Do not continue feature or control-plane work on `main` after this point.
 
@@ -72,9 +84,17 @@ Settings -> Actions -> General -> Workflow permissions -> Read and write permiss
 Allow the Jules GitHub App to access the new repository, then register the API key as a secret.
 
 ```bash
-read -rsp "Jules API Key: " JULES_API_KEY
-echo
-printf '%s' "$JULES_API_KEY" | gh secret set JULES_API_KEY --repo "$REPOSITORY"
+printf 'Jules API Key: ' >&2
+IFS= read -r -s JULES_API_KEY </dev/tty
+printf '\n' >&2
+
+[[ -n "$JULES_API_KEY" ]] || {
+  echo "ERROR: Jules API Key is empty." >&2
+  exit 1
+}
+
+printf '%s' "$JULES_API_KEY" |
+  gh secret set JULES_API_KEY     --repo "$REPOSITORY"
 ```
 
 Select the exact Jules Source name from the API response.
@@ -86,7 +106,7 @@ JULES_SOURCE_NAME="$({
     "https://jules.googleapis.com/v1alpha/sources"
 } | jq -r \
   --arg owner "$GITHUB_OWNER" \
-  --arg repo "$PROJECT_ID" \
+  --arg repo "$GITHUB_REPO" \
   '.sources[] | select(.githubRepo.owner == $owner and .githubRepo.repo == $repo) | .name' \
   | head -1)"
 
@@ -96,7 +116,9 @@ JULES_SOURCE_NAME="$({
 }
 
 gh variable set JULES_SOURCE_NAME --repo "$REPOSITORY" --body "$JULES_SOURCE_NAME"
+
 unset JULES_API_KEY
+unset JULES_SOURCE_NAME
 ```
 
 ## 5. Safe Initial Variables
@@ -165,7 +187,39 @@ After preflight, create a normal Pull Request to enable committed runtime state.
 
 ```bash
 git switch -c chore/enable-guarded-automation
-node ops/scripts/task-state-transition.ts --help >/dev/null || true
+
+node --input-type=module <<'NODE'
+import {
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+
+const path =
+  "ops/state/project-state.json";
+
+const state = JSON.parse(
+  readFileSync(path, "utf8"),
+);
+
+state.status = "active";
+state.phase = "goal-intake";
+state.automation.enabled = true;
+state.automation.contentEnabled = false;
+state.automation.netlifyStatusEnabled = true;
+state.automation.mode = "guarded";
+state.automation.pausedReason = null;
+state.quotas.maxConcurrent = 1;
+state.updatedAt = new Date().toISOString();
+
+writeFileSync(
+  path,
+  `${JSON.stringify(state, null, 2)}\n`,
+  "utf8",
+);
+NODE
+
+npm run ci
+git diff --check
 ```
 
 The PR should set:
