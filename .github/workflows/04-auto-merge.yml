@@ -205,10 +205,38 @@ jobs:
             VALIDATED_HEAD="$(
               jq -r '.[].body // empty' <<<"$COMMENTS_JSON" \
                 | awk '
-                    /<!-- juleswhile:validation-evidence -->/ {capture=1; sha=""; result=""; next}
-                    capture && /^head_sha:/ {sub(/^head_sha:[[:space:]]*/, ""); sha=$0}
-                    capture && /^result:/ {sub(/^result:[[:space:]]*/, ""); result=$0}
-                    capture && /^```/ {if (sha != "" && result == "passed") print sha; capture=0}
+                    /<!-- juleswhile:validation-evidence -->/ {
+                      capture=1
+                      fence=0
+                      sha=""
+                      result=""
+                      next
+                    }
+
+                    capture && /^```/ {
+                      if (fence == 0) {
+                        fence=1
+                        next
+                      }
+
+                      if (sha != "" && result == "passed") {
+                        print sha
+                      }
+
+                      capture=0
+                      fence=0
+                      next
+                    }
+
+                    capture && /^head_sha:/ {
+                      sub(/^head_sha:[[:space:]]*/, "")
+                      sha=$0
+                    }
+
+                    capture && /^result:/ {
+                      sub(/^result:[[:space:]]*/, "")
+                      result=$0
+                    }
                   ' \
                 | tail -1
             )"

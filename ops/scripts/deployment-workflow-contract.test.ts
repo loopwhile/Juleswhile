@@ -38,6 +38,21 @@ test("PR Validation publishes managed exact-head evidence", async () => {
   );
 });
 
+test("Auto Merge parses fenced validation evidence", async () => {
+  const content = await workflow(
+    ".github/workflows/04-auto-merge.yml",
+  );
+
+  assert(content.includes("fence=0"));
+  assert(content.includes("if (fence == 0) {"));
+  assert(content.includes("fence=1"));
+  assert(
+    content.includes(
+      'if (sha != "" && result == "passed") {',
+    ),
+  );
+});
+
 test("Next TASK recognizes deployment_completed", async () => {
   const content = await workflow(
     ".github/workflows/05-next-task.yml",
