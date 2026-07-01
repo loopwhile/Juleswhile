@@ -142,18 +142,6 @@
       "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
     },
     {
-      "path": "ops/scripts/project-state-projection.test.ts",
-      "max_lines": 617,
-      "follow_up_task": "TASK-014",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-014."
-    },
-    {
-      "path": "ops/scripts/project-state-projection.ts",
-      "max_lines": 1295,
-      "follow_up_task": "TASK-014",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-014."
-    },
-    {
       "path": "ops/scripts/rebuild-project-state.ts",
       "max_lines": 507,
       "follow_up_task": "TASK-014",

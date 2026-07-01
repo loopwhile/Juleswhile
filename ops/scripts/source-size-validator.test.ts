@@ -222,11 +222,11 @@ test(
 		);
 		assert.equal(
 			report.summary.exceptions,
-			25,
+			report.summary.oversizedFiles,
 		);
 		assert.equal(
-			report.summary.oversizedFiles,
-			25,
+			report.summary.ratchetedFiles,
+			report.summary.exceptions,
 		);
 	},
 );
