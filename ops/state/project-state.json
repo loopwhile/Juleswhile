@@ -149,23 +149,23 @@
       {
         "resource": "control-plane-architecture",
         "taskId": "TASK-014",
-        "acquiredAt": "2026-07-01T15:39:45Z",
-        "expiresAt": "2026-07-01T19:39:45.000Z"
+        "acquiredAt": "2026-07-01T15:52:54Z",
+        "expiresAt": "2026-07-01T19:52:54.000Z"
       },
       {
         "resource": "runtime-projection",
         "taskId": "TASK-014",
-        "acquiredAt": "2026-07-01T15:39:45Z",
-        "expiresAt": "2026-07-01T19:39:45.000Z"
+        "acquiredAt": "2026-07-01T15:52:54Z",
+        "expiresAt": "2026-07-01T19:52:54.000Z"
       },
       {
         "resource": "runtime-reconciler",
         "taskId": "TASK-014",
-        "acquiredAt": "2026-07-01T15:39:45Z",
-        "expiresAt": "2026-07-01T19:39:45.000Z"
+        "acquiredAt": "2026-07-01T15:52:54Z",
+        "expiresAt": "2026-07-01T19:52:54.000Z"
       }
     ],
-    "lastReconciledAt": "2026-07-01T15:41:04.000Z"
+    "lastReconciledAt": "2026-07-01T15:54:01.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -187,23 +187,23 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T15:41:04.000Z",
-    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28530271800"
+    "occurredAt": "2026-07-01T15:54:01.000Z",
+    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28530369749"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T15:41:04.000Z",
+  "updatedAt": "2026-07-01T15:54:01.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T15:41:04.000Z",
-    "generatedAt": "2026-07-01T15:41:04.000Z",
-    "evidenceDigest": "sha256:1037856f90be81f8a59cf9888ed9f755a3bfc414594683342a24e6d40f4c2a28",
+    "observedAt": "2026-07-01T15:54:01.000Z",
+    "generatedAt": "2026-07-01T15:54:01.000Z",
+    "evidenceDigest": "sha256:95dfe0cd608305fdd53464374442a9fcc4423accb693eeb94012fcecb039bd6b",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28530271800",
+    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28530369749",
     "syncReason": "repository_dispatch",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
-      "supersededIssues": 3,
+      "supersededIssues": 2,
       "manifestMismatches": 0,
       "issueLifecycleMismatches": 0,
       "sessionLookupErrors": 0
