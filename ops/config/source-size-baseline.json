@@ -130,36 +130,6 @@
       "reason": "Pre-existing oversized file; must be reduced and removed by TASK-016."
     },
     {
-      "path": "ops/scripts/dispatch-jules.ts",
-      "max_lines": 1823,
-      "follow_up_task": "TASK-015",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
-    },
-    {
-      "path": "ops/scripts/materialize-issues.ts",
-      "max_lines": 1442,
-      "follow_up_task": "TASK-015",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
-    },
-    {
-      "path": "ops/scripts/select-next-task.ts",
-      "max_lines": 1460,
-      "follow_up_task": "TASK-015",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
-    },
-    {
-      "path": "ops/scripts/task-state-transition.ts",
-      "max_lines": 584,
-      "follow_up_task": "TASK-015",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
-    },
-    {
-      "path": "ops/scripts/validate-task-graph.ts",
-      "max_lines": 762,
-      "follow_up_task": "TASK-015",
-      "reason": "Pre-existing oversized file; must be reduced and removed by TASK-015."
-    },
-    {
       "path": "ops/tasks/task-history.yaml",
       "max_lines": 1309,
       "follow_up_task": "TASK-016",

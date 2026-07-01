@@ -122,9 +122,9 @@
     "pausedReason": null
   },
   "taskSummary": {
-    "total": 14,
+    "total": 15,
     "draft": 0,
-    "ready": 0,
+    "ready": 1,
     "queued": 0,
     "dispatching": 0,
     "running": 0,
@@ -144,7 +144,17 @@
   },
   "runtime": {
     "activeSessions": [],
-    "activePullRequests": [],
+    "activePullRequests": [
+      {
+        "taskId": "TASK-015",
+        "issueNumber": 117,
+        "number": 122,
+        "url": "https://github.com/loopwhile/Juleswhile/pull/122",
+        "headSha": "3bbc4fcc0935d60b714dab0cf4793a349c425366",
+        "state": "open",
+        "openedAt": "2026-07-01T17:29:24Z"
+      }
+    ],
     "resourceLocks": [],
     "lastReconciledAt": "2026-07-01T17:53:50.000Z"
   },
@@ -169,7 +179,7 @@
     "taskId": null,
     "issueNumber": null,
     "occurredAt": "2026-07-01T17:53:50.000Z",
-    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28538730937"
+    "runUrl": null
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
   "updatedAt": "2026-07-01T17:53:50.000Z",
@@ -177,14 +187,14 @@
     "status": "current",
     "observedAt": "2026-07-01T17:53:50.000Z",
     "generatedAt": "2026-07-01T17:53:50.000Z",
-    "evidenceDigest": "sha256:7d25d585ef5d3c6fc3d1ab8382215f9591b2faec391a1a7f9eb3a1bcee08b20f",
+    "evidenceDigest": "sha256:a9feaaea8a90c471ec33882b1c661b71a6e1f8859fad4592ee671269e6a760b3",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28538730937",
-    "syncReason": "repository_dispatch",
+    "workflowRunUrl": null,
+    "syncReason": "task-015-final-human-merge",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
-      "supersededIssues": 3,
+      "supersededIssues": 2,
       "manifestMismatches": 0,
       "issueLifecycleMismatches": 0,
       "sessionLookupErrors": 0
