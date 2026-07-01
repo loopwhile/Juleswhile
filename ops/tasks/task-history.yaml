@@ -992,9 +992,9 @@ tasks:
     title: Improve Juleswhile clone-init template workflow
     role: developer
     type: maintenance
-    status: RUNNING
+    status: COMPLETED
     priority: P0
-    enabled: true
+    enabled: false
     objective: Improve the Juleswhile template so new projects can start with the clone/init/bootstrap
       workflow, then operate through GitHub Issues, Jules, PR validation, auto-merge, Netlify
       deployment verification, and a static operational dashboard.
@@ -1084,10 +1084,114 @@ tasks:
       goal_issue_number: 1
       issue_number: 66
       created_at: 2026-07-01T09:00:00Z
-      updated_at: 2026-07-01T09:00:00Z
+      updated_at: 2026-07-01T10:30:43.000Z
       created_by: user
       tags:
         - control-plane
         - template
         - bootstrap
         - dashboard
+
+  - kind: task
+    id: TASK-011
+    title: Synchronize runtime evidence to committed projection
+    role: developer
+    type: maintenance
+    status: RUNNING
+    priority: P0
+    enabled: true
+    objective: Synchronize authoritative GitHub Runtime evidence into the owning TASK Manifest include file
+      and ops/state/project-state.json through one validated and idempotent Projection operation.
+    depends_on:
+      - TASK-010
+    inputs:
+      - GitHub TASK Issues
+      - GitHub Issue labels and lifecycle
+      - GitHub Issue comments
+      - GitHub Pull Requests
+      - Jules Session observations
+      - ops/tasks/task-index.yaml
+      - ops/tasks/task-history.yaml
+      - ops/state/project-state.json
+      - ops/scripts/project-state-projection.ts
+      - ops/scripts/rebuild-project-state.ts
+    outputs:
+      - ops/scripts/task-runtime-synchronizer.ts
+      - ops/scripts/runtime-projection-repository.ts
+      - ops/scripts/project-state-projection.ts
+      - ops/scripts/rebuild-project-state.ts
+      - ops/scripts/runtime-projection-sync.test.ts
+      - .github/workflows/10-runtime-projection-sync.yml
+      - ops/tasks/task-history.yaml
+      - ops/state/project-state.json
+    acceptance_criteria:
+      - Canonical GitHub TASK Issue state labels project TASK runtime status.
+      - Terminal TASK status projects enabled false.
+      - Runtime synchronization changes only status, enabled, and metadata.updated_at in TASK contracts.
+      - Included TASK contracts are updated in the source file that owns each TASK.
+      - TASK Manifest and project-state are written atomically from the same Runtime evidence.
+      - Duplicate state labels prevent write-back.
+      - Missing canonical TASK Issues prevent write-back.
+      - Jules Session observation errors preserve the last valid committed Projection.
+      - Identical Runtime evidence produces no subsequent file changes.
+      - TASK-010 completion is written back to task-history.yaml.
+      - Terminal TASKs release active Sessions, open Pull Requests, and Resource Locks.
+      - Runtime Projection Sync creates at most one automation Pull Request.
+      - npm run ci and git diff --check pass.
+    allowed_paths:
+      - ops/scripts/**
+      - ops/tasks/**
+      - ops/state/project-state.json
+      - ops/schemas/**
+      - .github/workflows/**
+      - package.json
+      - package-lock.json
+      - README.md
+      - operator-guide.md
+    forbidden_paths:
+      - src/**
+      - content/**
+      - public/**
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+    forbidden_actions:
+      - Expose, request, or print Secret values.
+      - Push directly to main.
+      - Weaken PR validation or Custom Auto Merge policy.
+      - Modify authentication, payment, or user application features.
+      - Enable unrelated content automation.
+      - Create paid infrastructure.
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run validate:supply-chain
+      - npm run typecheck
+      - npm run test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - runtime-projection
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 180
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 71
+      created_at: 2026-07-01T12:18:58Z
+      updated_at: 2026-07-01T12:18:58Z
+      created_by: user
+      tags:
+        - control-plane
+        - runtime
+        - projection
+        - synchronization
