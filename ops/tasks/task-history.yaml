@@ -1195,3 +1195,114 @@ tasks:
         - runtime
         - projection
         - synchronization
+  - kind: task
+    id: TASK-012
+    title: Guarantee Dashboard projection freshness
+    role: developer
+    type: maintenance
+    status: READY
+    priority: P0
+    enabled: true
+    objective: Make the static operations Dashboard expose and enforce the freshness,
+      integrity, and provenance of its committed Runtime Projection.
+    depends_on:
+      - TASK-011
+    inputs:
+      - GitHub Runtime Projection evidence
+      - ops/state/project-state.json
+      - ops/schemas/project-state.schema.json
+      - ops/scripts/build-dashboard.ts
+      - ops/scripts/project-state-projection.ts
+      - ops/scripts/runtime-projection-repository.ts
+      - .github/workflows/08-netlify-status.yml
+      - .github/workflows/10-runtime-projection-sync.yml
+    outputs:
+      - ops/schemas/project-state.schema.json
+      - ops/state/project-state.json
+      - ops/scripts/build-dashboard.ts
+      - ops/scripts/build-dashboard.test.ts
+      - ops/scripts/project-state-projection.ts
+      - ops/scripts/runtime-projection-repository.ts
+      - .github/workflows/08-netlify-status.yml
+      - .github/workflows/10-runtime-projection-sync.yml
+    acceptance_criteria:
+      - Project State Schema validates explicit Projection freshness metadata.
+      - Projection status supports current, stale, degraded, and invalid.
+      - Dashboard displays Projection status, observation time, generation time,
+        evidence digest, synchronization reason, Workflow URL, and drift counters.
+      - Non-current Projection status overrides ordinary next-action guidance.
+      - Dashboard continues to display TASK, Session, Pull Request, Lock, and quota state.
+      - Secret-like keys cause Dashboard generation to fail before HTML is written.
+      - User-controlled values remain HTML escaped.
+      - Identical input produces deterministic HTML.
+      - Empty Runtime collections and invalid timestamps render safely.
+      - Production-only dependency installation can execute the Dashboard build.
+      - npm run ci passes.
+      - git diff --check passes.
+      - Netlify Production verification succeeds.
+    allowed_paths:
+      - ops/scripts/build-dashboard.ts
+      - ops/scripts/build-dashboard.test.ts
+      - ops/scripts/project-state-projection.ts
+      - ops/scripts/rebuild-project-state.ts
+      - ops/scripts/runtime-projection-repository.ts
+      - ops/scripts/runtime-projection-workflow.test.ts
+      - ops/schemas/project-state.schema.json
+      - ops/state/project-state.json
+      - ops/tasks/task-history.yaml
+      - .github/workflows/08-netlify-status.yml
+      - .github/workflows/10-runtime-projection-sync.yml
+      - package.json
+      - package-lock.json
+      - README.md
+      - operator-guide.md
+    forbidden_paths:
+      - src/**
+      - content/**
+      - public/**
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+    forbidden_actions:
+      - Expose, request, or print Secret values.
+      - Push directly to main.
+      - Weaken PR validation or Custom Auto Merge policy.
+      - Modify authentication, payment, or user application features.
+      - Enable unrelated content automation.
+      - Create paid infrastructure.
+      - Delete tests or weaken validation gates.
+    validation_commands:
+      - npm run lint
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run validate:supply-chain
+      - npm run typecheck
+      - npm test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - runtime-projection
+      - static-dashboard
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 180
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 75
+      created_at: 2026-07-01T12:53:48Z
+      updated_at: 2026-07-01T12:53:48Z
+      created_by: user
+      tags:
+        - dashboard
+        - projection
+        - freshness
+        - netlify

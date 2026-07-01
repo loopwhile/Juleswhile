@@ -122,9 +122,9 @@
     "pausedReason": null
   },
   "taskSummary": {
-    "total": 11,
+    "total": 12,
     "draft": 0,
-    "ready": 0,
+    "ready": 1,
     "queued": 0,
     "dispatching": 0,
     "running": 0,
@@ -164,13 +164,13 @@
     }
   },
   "lastEvent": {
-    "type": "runtime-state-projected",
-    "source": "reconciler",
-    "taskId": null,
-    "issueNumber": null,
-    "occurredAt": "2026-07-01T12:42:51.000Z",
-    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28518320109"
+    "type": "task-created",
+    "source": "user",
+    "taskId": "TASK-012",
+    "issueNumber": 75,
+    "occurredAt": "2026-07-01T12:53:48Z",
+    "runUrl": "https://github.com/loopwhile/Juleswhile/issues/75"
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T12:42:51.000Z"
+  "updatedAt": "2026-07-01T12:53:48Z"
 }
