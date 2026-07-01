@@ -2,23 +2,13 @@ name: "03 · PR Validation"
 
 on:
   pull_request:
-    branches:
-      - main
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions: {}
 
 concurrency:
-  group: >-
-    pr-validation-${{
-      github.event.pull_request.number
-    }}-${{
-      github.event.pull_request.head.sha
-    }}
+  group: pr-validation-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
   cancel-in-progress: true
 
 env:
@@ -29,200 +19,116 @@ env:
 
 jobs:
   validate:
-    name: Validate PR contract and project
+    name: Normalize and validate PR
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     permissions:
       contents: read
-
+      pull-requests: write
+      issues: read
     outputs:
       task_id: ${{ steps.metadata.outputs.task_id }}
       task_issue_number: ${{ steps.metadata.outputs.task_issue_number }}
+      goal_issue_number: ${{ steps.metadata.outputs.goal_issue_number }}
       control_plane_change: ${{ steps.scope.outputs.control_plane_change }}
-
     steps:
-      - name: Validate Pull Request metadata
+      - name: Normalize managed PR metadata
         id: metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          node <<'NODE'
-          const fs = require("node:fs");
+          PR_JSON="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
+          TITLE="$(jq -r '.title // ""' <<<"$PR_JSON")"
+          BODY="$(jq -r '.body // ""' <<<"$PR_JSON")"
+          BASE="$(jq -r '.base.ref // ""' <<<"$PR_JSON")"
+          HEAD_REPO="$(jq -r '.head.repo.full_name // ""' <<<"$PR_JSON")"
+          BASE_REPO="$(jq -r '.base.repo.full_name // ""' <<<"$PR_JSON")"
+          IS_DRAFT="$(jq -r '.draft // false' <<<"$PR_JSON")"
 
-          const event = JSON.parse(
-            fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"),
-          );
+          [[ "$BASE" == "main" ]] || { echo "::error::PR base must be main"; exit 1; }
+          if [[ "$HEAD_REPO" != "$BASE_REPO" && "$ALLOW_FORK_PRS" != "true" ]]; then
+            echo "::error::Fork PRs are disabled"
+            exit 1
+          fi
 
-          const pullRequest = event.pull_request;
+          if [[ ! "$TITLE" =~ ^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+|MAINTENANCE|TEMPLATE)\] ]]; then
+            echo "::error::PR title must start with [TASK-000], [GOAL-0], [CORRECTION-ID], [MAINTENANCE], or [TEMPLATE]"
+            exit 1
+          fi
 
-          if (!pullRequest) {
-            throw new Error("Pull Request event payload가 없습니다.");
-          }
+          TASK_ID="${BASH_REMATCH[1]}"
+          TASK_ISSUE_NUMBER=""
+          GOAL_ISSUE_NUMBER=""
+          NORMALIZED_BODY="$BODY"
 
-          const title = String(pullRequest.title || "").trim();
-          const body = String(pullRequest.body || "");
-          const baseBranch = String(pullRequest.base?.ref || "");
-          const isCrossRepository =
-            pullRequest.head?.repo?.full_name !== pullRequest.base?.repo?.full_name;
+          if [[ "$TASK_ID" =~ ^TASK- ]]; then
+            TASK_ISSUE_NUMBER="$(sed -nE 's/.*TASK Issue:[[:space:]]*(https:\/\/github\.com\/[^/[:space:]]+\/[^/[:space:]]+\/issues\/)?#?([0-9]+).*/\2/ip' <<<"$BODY" | head -1)"
+            if [[ -z "$TASK_ISSUE_NUMBER" ]]; then
+              TASK_ISSUE_NUMBER="$(
+                gh api "repos/${REPOSITORY}/issues?state=all&per_page=100" --paginate \
+                  --jq ".[] | select(.pull_request == null) | select((.title | test(\"${TASK_ID}\"; \"i\")) or ((.body // \"\") | contains(\"juleswhile:task-id:${TASK_ID}\"))) | .number" \
+                  | head -1
+              )"
+            fi
+            [[ "$TASK_ISSUE_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::Canonical TASK Issue not found for ${TASK_ID}"; exit 1; }
+            if [[ "$NORMALIZED_BODY" != *"<!-- juleswhile:task-pr -->"* ]]; then
+              NORMALIZED_BODY="<!-- juleswhile:task-pr -->\n\n${NORMALIZED_BODY}"
+            fi
+            if ! grep -Eqi 'TASK Issue:' <<<"$NORMALIZED_BODY"; then
+              NORMALIZED_BODY="${NORMALIZED_BODY}\n\nTASK Issue: #${TASK_ISSUE_NUMBER}"
+            fi
+          elif [[ "$TASK_ID" =~ ^GOAL- ]]; then
+            GOAL_ISSUE_NUMBER="$(sed -nE 's/.*Goal Issue:[[:space:]]*(https:\/\/github\.com\/[^/[:space:]]+\/[^/[:space:]]+\/issues\/)?#?([0-9]+).*/\2/ip' <<<"$BODY" | head -1)"
+            if [[ -z "$GOAL_ISSUE_NUMBER" ]]; then
+              GOAL_ISSUE_NUMBER="${TASK_ID#GOAL-}"
+            fi
+            [[ "$GOAL_ISSUE_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::Goal Issue reference is invalid"; exit 1; }
+            if [[ "$NORMALIZED_BODY" != *"<!-- juleswhile:task-pr -->"* ]]; then
+              NORMALIZED_BODY="<!-- juleswhile:task-pr -->\n\n${NORMALIZED_BODY}"
+            fi
+            if ! grep -Eqi 'Goal Issue:' <<<"$NORMALIZED_BODY"; then
+              NORMALIZED_BODY="${NORMALIZED_BODY}\n\nGoal Issue: #${GOAL_ISSUE_NUMBER}"
+            fi
+          fi
 
-          const titlePattern =
-            /^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+|MAINTENANCE|TEMPLATE)\]/;
+          if [[ "$NORMALIZED_BODY" != "$BODY" || "$IS_DRAFT" == "true" ]]; then
+            jq -n --arg body "$NORMALIZED_BODY" '{body:$body,draft:false}' \
+              | gh api --method PATCH "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --input - >/dev/null
+          fi
 
-          const titleMatch = title.match(titlePattern);
-          const taskId = titleMatch ? titleMatch[1] : "DRAFT";
-          const isMaintenanceOrTemplate =
-            taskId === "MAINTENANCE" || taskId === "TEMPLATE";
+          {
+            echo "task_id=${TASK_ID}"
+            echo "task_issue_number=${TASK_ISSUE_NUMBER}"
+            echo "goal_issue_number=${GOAL_ISSUE_NUMBER}"
+          } >> "$GITHUB_OUTPUT"
 
-          if (!titleMatch) {
-            const errorMessage =
-              `PR 제목 형식이 잘못되었습니다: "${title}". ` +
-              "PR 제목은 [TASK-000], [GOAL-0], [CORRECTION-ID], " +
-              "[MAINTENANCE] 또는 [TEMPLATE] 형식으로 시작해야 합니다.";
-
-            if (pullRequest.draft) {
-              console.warn(`::warning::${errorMessage}`);
-            } else {
-              throw new Error(errorMessage);
-            }
-          }
-
-          if (baseBranch !== "main") {
-            throw new Error(
-              `PR 대상 브랜치는 main이어야 합니다: ${baseBranch}`,
-            );
-          }
-
-          if (
-            !pullRequest.draft &&
-            !isMaintenanceOrTemplate &&
-            !body.includes("<!-- juleswhile:task-pr -->")
-          ) {
-            throw new Error(
-              "Juleswhile Pull Request Template 식별자가 없습니다.",
-            );
-          }
-
-          if (
-            isCrossRepository &&
-            process.env.ALLOW_FORK_PRS !== "true"
-          ) {
-            throw new Error(
-              "외부 Fork Pull Request는 기본 정책에서 허용되지 않습니다.",
-            );
-          }
-
-          const taskIssueMatch = body.match(
-            /TASK Issue:\s*(?:https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/)?#?([0-9]+)/i,
-          );
-
-          const taskIssueNumber = taskIssueMatch
-            ? taskIssueMatch[1]
-            : "";
-
-          fs.appendFileSync(
-            process.env.GITHUB_OUTPUT,
-            [
-              `task_id=${taskId}`,
-              `task_issue_number=${taskIssueNumber}`,
-              `is_cross_repository=${isCrossRepository}`,
-              "",
-            ].join("\n"),
-          );
-
-          fs.appendFileSync(
-            process.env.GITHUB_STEP_SUMMARY,
-            [
-              "# Pull Request Metadata",
-              "",
-              "| 항목 | 값 |",
-              "|---|---|",
-              `| PR | #${pullRequest.number} |`,
-              `| TASK | \`${taskId}\` |`,
-              `| TASK Issue | \`${taskIssueNumber || "not-specified"}\` |`,
-              `| Base | \`${baseBranch}\` |`,
-              `| Head | \`${pullRequest.head?.ref || "unknown"}\` |`,
-              `| Cross repository | \`${isCrossRepository}\` |`,
-              "",
-            ].join("\n"),
-          );
-          NODE
-
-      - name: Checkout Pull Request
+      - name: Checkout PR head
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Detect changed files and control-plane changes
+      - name: Detect changed files
         id: scope
         shell: bash
         run: |
           set -Eeuo pipefail
-
           CHANGED_FILES="${RUNNER_TEMP}/changed-files.txt"
-
-          git diff \
-            --name-only \
-            --diff-filter=ACDMRTUXB \
-            "$BASE_SHA" \
-            "$HEAD_SHA" \
-            | sed '/^[[:space:]]*$/d' \
-            | sort -u \
-            > "$CHANGED_FILES"
-
-          if [[ ! -s "$CHANGED_FILES" ]]; then
-            echo "::error::변경된 파일이 없습니다."
-            exit 1
-          fi
-
+          git diff --name-only --diff-filter=ACDMRTUXB "$BASE_SHA" "$HEAD_SHA" | sed '/^[[:space:]]*$/d' | sort -u > "$CHANGED_FILES"
+          [[ -s "$CHANGED_FILES" ]] || { echo "::error::No changed files"; exit 1; }
           CONTROL_PLANE_CHANGE=false
-
           while IFS= read -r file; do
             case "$file" in
-              AGENTS.md)
-                CONTROL_PLANE_CHANGE=true
-                ;;
-
-              .github/workflows/*)
-                CONTROL_PLANE_CHANGE=true
-                ;;
-
-              .github/ISSUE_TEMPLATE/*)
-                CONTROL_PLANE_CHANGE=true
-                ;;
-
-              .github/pull_request_template.md)
-                CONTROL_PLANE_CHANGE=true
-                ;;
-
-              ops/schemas/*)
-                CONTROL_PLANE_CHANGE=true
-                ;;
-
-              ops/scripts/*)
-                CONTROL_PLANE_CHANGE=true
-                ;;
-
-              package.json|package-lock.json|netlify.toml)
-                CONTROL_PLANE_CHANGE=true
-                ;;
+              AGENTS.md|.github/*|ops/schemas/*|ops/scripts/*|package.json|package-lock.json|netlify.toml)
+                CONTROL_PLANE_CHANGE=true ;;
             esac
           done < "$CHANGED_FILES"
-
-          echo "control_plane_change=${CONTROL_PLANE_CHANGE}" \
-            >> "$GITHUB_OUTPUT"
-
-          {
-            echo "# Changed Files"
-            echo
-            echo "- Control-plane change: \`${CONTROL_PLANE_CHANGE}\`"
-            echo
-            echo '```text'
-            cat "$CHANGED_FILES"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "control_plane_change=${CONTROL_PLANE_CHANGE}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -231,256 +137,116 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Validate required project files
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          REQUIRED_FILES=(
-            "AGENTS.md"
-            "README.md"
-            "PROJECT_GOAL.md"
-            "package.json"
-            "ops/tasks/task-index.yaml"
-            "ops/state/project-state.json"
-            "ops/scripts/validate-task-graph.ts"
-          )
-
-          for file in "${REQUIRED_FILES[@]}"; do
-            if [[ ! -f "$file" ]]; then
-              echo "::error::필수 파일이 없습니다: ${file}"
-              exit 1
-            fi
-          done
-
       - name: Install dependencies
         shell: bash
         run: |
           set -Eeuo pipefail
+          if [[ -f package-lock.json ]]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
 
-          if [[ -f package-lock.json ]]; then
-            npm ci --no-audit --no-fund
-          else
-            echo "::warning::package-lock.json이 없어 npm install을 사용합니다."
-            npm install --no-audit --no-fund
-          fi
-
-      - name: Validate required package scripts
+      - name: Validate required files and scripts
         shell: bash
         run: |
           set -Eeuo pipefail
-
-          REQUIRED_SCRIPTS=(
-            "validate:schemas"
-            "validate:task-graph"
-            "validate:pr-scope"
-          )
-
-          for script in "${REQUIRED_SCRIPTS[@]}"; do
-            if ! jq -e \
-              --arg script "$script" \
-              '.scripts[$script] | type == "string"' \
-              package.json \
-              > /dev/null; then
-              echo "::error::필수 package script가 없습니다: ${script}"
-              exit 1
-            fi
+          for file in AGENTS.md README.md PROJECT_GOAL.md package.json ops/tasks/task-index.yaml ops/state/project-state.json ops/scripts/validate-task-graph.ts; do
+            [[ -f "$file" ]] || { echo "::error::Missing required file: $file"; exit 1; }
+          done
+          for script in validate:schemas validate:task-graph validate:pr-scope; do
+            jq -e --arg script "$script" '.scripts[$script] | type == "string"' package.json >/dev/null \
+              || { echo "::error::Missing package script: $script"; exit 1; }
           done
 
-      - name: Validate JSON schemas
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          npm run validate:schemas
-
-      - name: Validate TASK graph
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          npm run validate:task-graph
-
-      - name: Validate TASK file scope
+      - name: Validate project and TASK scope
         env:
           TASK_ID: ${{ steps.metadata.outputs.task_id }}
         shell: bash
         run: |
           set -Eeuo pipefail
-
+          npm run validate:schemas
+          npm run validate:task-graph
           npm run validate:pr-scope -- \
             --task-id "$TASK_ID" \
             --change-list "${RUNNER_TEMP}/changed-files.txt" \
             --base-sha "$BASE_SHA" \
             --head-sha "$HEAD_SHA"
-
-      - name: Run optional project validation
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          run_if_present() {
-            local script="$1"
-
-            if jq -e \
-              --arg script "$script" \
-              '.scripts[$script] | type == "string"' \
-              package.json \
-              > /dev/null; then
-              echo "::group::npm run ${script}"
+          for script in validate:supply-chain lint typecheck test build; do
+            if jq -e --arg script "$script" '.scripts[$script] | type == "string"' package.json >/dev/null; then
               npm run "$script"
-              echo "::endgroup::"
-            else
-              echo "::notice::선택 검증이 정의되지 않았습니다: ${script}"
             fi
-          }
-
-          run_if_present "validate:supply-chain"
-          run_if_present "lint"
-          run_if_present "typecheck"
-          run_if_present "test"
-          run_if_present "build"
-
-      - name: Verify repository integrity
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
+          done
           git diff --check "$BASE_SHA" "$HEAD_SHA"
+          npx tsx ops/scripts/verify-repository-integrity.ts --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
 
-          npx tsx ops/scripts/verify-repository-integrity.ts \
-            --base-sha "$BASE_SHA" \
-            --head-sha "$HEAD_SHA"
-
-      - name: Write successful validation summary
-        env:
-          TASK_ID: ${{ steps.metadata.outputs.task_id }}
-          CONTROL_PLANE_CHANGE: ${{ steps.scope.outputs.control_plane_change }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          {
-            echo
-            echo "# Validation Result"
-            echo
-            echo "- TASK: \`${TASK_ID}\`"
-            echo "- Result: \`PASS\`"
-            echo "- Control-plane change: \`${CONTROL_PLANE_CHANGE}\`"
-            echo
-            echo "모든 필수 Juleswhile 검증을 통과했습니다."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  annotate:
-    name: Record PR validation result
+  publish-result:
+    name: Publish validation event
     if: always()
-    needs:
-      - validate
-
+    needs: [validate]
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
     permissions:
+      contents: read
       pull-requests: write
       issues: write
-
     steps:
-      - name: Ensure validation labels
+      - name: Apply labels and dispatch controller event
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          gh label create "juleswhile:managed" \
-            --repo "$REPOSITORY" \
-            --color "0052CC" \
-            --description "Managed by Juleswhile workflows" \
-            --force
-
-          gh label create "validation:passed" \
-            --repo "$REPOSITORY" \
-            --color "0E8A16" \
-            --description "Required Juleswhile validation passed" \
-            --force
-
-          gh label create "validation:failed" \
-            --repo "$REPOSITORY" \
-            --color "D73A4A" \
-            --description "Required Juleswhile validation failed" \
-            --force
-
-          gh label create "risk:control-plane" \
-            --repo "$REPOSITORY" \
-            --color "B60205" \
-            --description "Changes Juleswhile control-plane files" \
-            --force
-
-          gh label create "human-approval-required" \
-            --repo "$REPOSITORY" \
-            --color "D93F0B" \
-            --description "A human approval is required before merge" \
-            --force
-
-      - name: Apply validation labels
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          VALIDATION_RESULT: ${{ needs.validate.result }}
+          RESULT: ${{ needs.validate.result }}
+          TASK_ID: ${{ needs.validate.outputs.task_id }}
+          TASK_ISSUE_NUMBER: ${{ needs.validate.outputs.task_issue_number }}
+          GOAL_ISSUE_NUMBER: ${{ needs.validate.outputs.goal_issue_number }}
           CONTROL_PLANE_CHANGE: ${{ needs.validate.outputs.control_plane_change }}
         shell: bash
         run: |
           set -Eeuo pipefail
-
-          jq -n             '{labels:["juleswhile:managed"]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels"                 --input -                 > /dev/null
-
-          for label in             "validation:passed"             "validation:failed"
-          do
-            gh api               --method DELETE               "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${label}"               > /dev/null 2>&1               || true
+          for spec in \
+            'juleswhile:managed|0052CC|Managed by Juleswhile' \
+            'validation:passed|0E8A16|Required validation passed' \
+            'validation:failed|D73A4A|Required validation failed' \
+            'risk:control-plane|B60205|Control-plane change' \
+            'human-approval-required|D93F0B|Human approval required'; do
+            IFS='|' read -r name color description <<<"$spec"
+            gh label create "$name" --repo "$REPOSITORY" --color "$color" --description "$description" --force
           done
 
-          if [[ "$VALIDATION_RESULT" == "success" ]]; then
-            RESULT_LABEL="validation:passed"
+          for label in validation:passed validation:failed; do
+            gh api --method DELETE "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${label}" >/dev/null 2>&1 || true
+          done
+
+          if [[ "$RESULT" == "success" ]]; then
+            RESULT_LABEL=validation:passed
+            EVENT_TYPE=pr_validation_passed
           else
-            RESULT_LABEL="validation:failed"
+            RESULT_LABEL=validation:failed
+            EVENT_TYPE=pr_validation_failed
           fi
 
-          jq -n             --arg label "$RESULT_LABEL"             '{labels:[$label]}'             | gh api                 --method POST                 "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels"                 --input -                 > /dev/null
+          jq -n --arg label "$RESULT_LABEL" '{labels:[$label]}' \
+            | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
 
           if [[ "$CONTROL_PLANE_CHANGE" == "true" ]]; then
-            jq -n               '{
-                labels: [
-                  "risk:control-plane",
-                  "human-approval-required"
-                ]
-              }'               | gh api                   --method POST                   "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels"                   --input -                   > /dev/null
+            jq -n '{labels:["risk:control-plane","human-approval-required"]}' \
+              | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
           fi
 
-      - name: Comment on validation failure
-        if: needs.validate.result != 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
+          jq -n \
+            --arg event_type "$EVENT_TYPE" \
+            --arg task_id "$TASK_ID" \
+            --arg task_issue_number "$TASK_ISSUE_NUMBER" \
+            --arg goal_issue_number "$GOAL_ISSUE_NUMBER" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --argjson pr_number "$PR_NUMBER" \
+            '{event_type:$event_type,client_payload:{pr_number:$pr_number,task_id:$task_id,task_issue_number:$task_issue_number,goal_issue_number:$goal_issue_number,head_sha:$head_sha,run_url:$run_url}}' \
+            | gh api --method POST "repos/${REPOSITORY}/dispatches" --input -
 
-          gh pr comment "$PR_NUMBER" \
-            --repo "$REPOSITORY" \
-            --body "$(
-              cat <<EOF
-          <!-- juleswhile:pr-validation-failed -->
+          if [[ "$RESULT" != "success" ]]; then
+            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:pr-validation-failed -->
 
-          ## Juleswhile PR Validation 실패
+## Juleswhile PR Validation 실패
 
-          Pull Request가 필수 품질 검증을 통과하지 못했습니다.
+- Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+- Commit: \`${HEAD_SHA}\`
 
-          - Workflow Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-          - Commit: \`${HEAD_SHA}\`
-
-          실패한 검증을 삭제하거나 약화하지 말고,
-          로그에서 원인을 확인하여 현재 TASK 범위 안에서 보완하십시오.
-
-          Secret, API Key, Token 또는 개인정보를 댓글에 복사하지 마십시오.
-          EOF
-            )" \
-            || true
+자동 Correction Controller가 현재 PR 브랜치를 기준으로 제한된 보완을 요청합니다. 실패 테스트나 검증을 삭제하거나 약화하지 마십시오." || true
+          fi
