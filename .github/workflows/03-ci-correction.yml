@@ -45,14 +45,12 @@ jobs:
           EVENT_PR_NUMBER: ${{ github.event.client_payload.pr_number }}
           EVENT_TASK_ID: ${{ github.event.client_payload.task_id }}
           EVENT_TASK_ISSUE: ${{ github.event.client_payload.task_issue_number }}
-          EVENT_HEAD_SHA: ${{ github.event.client_payload.head_sha }}
           EVENT_RUN_URL: ${{ github.event.client_payload.run_url }}
           MANUAL_PR_NUMBER: ${{ inputs.pr_number }}
           MANUAL_FORCE: ${{ inputs.force }}
         shell: bash
         run: |
           set -Eeuo pipefail
-
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             PR_NUMBER="${MANUAL_PR_NUMBER}"
             FORCE_RUN="${MANUAL_FORCE:-false}"
@@ -60,11 +58,9 @@ jobs:
             PR_NUMBER="${EVENT_PR_NUMBER}"
             FORCE_RUN=false
           fi
-
           [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::Invalid PR number"; exit 1; }
-
           if [[ "$AUTOMATION_ENABLED" != "true" && "$FORCE_RUN" != "true" ]]; then
-            echo "::notice::AUTOMATION_ENABLED is not true; correction is skipped"
+            echo "::notice::AUTOMATION_ENABLED is not true; correction skipped"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -76,168 +72,102 @@ jobs:
           HEAD_SHA="$(jq -r '.head.sha' <<<"$PR_JSON")"
           HEAD_REPO="$(jq -r '.head.repo.full_name' <<<"$PR_JSON")"
           TITLE="$(jq -r '.title' <<<"$PR_JSON")"
-          BODY="$(jq -r '.body // ""' <<<"$PR_JSON")"
-
-          [[ "$STATE" == "open" ]] || { echo "::notice::PR is not open"; echo "should_run=false" >> "$GITHUB_OUTPUT"; exit 0; }
-          [[ "$DRAFT" == "false" ]] || { echo "::notice::PR is draft"; echo "should_run=false" >> "$GITHUB_OUTPUT"; exit 0; }
-          [[ "$HEAD_REPO" == "$REPOSITORY" ]] || { echo "::error::Cross-repository correction is not allowed"; exit 1; }
+          [[ "$STATE" == "open" && "$DRAFT" == "false" ]] || { echo "::notice::PR is not correctable"; echo "should_run=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          [[ "$HEAD_REPO" == "$REPOSITORY" ]] || { echo "::error::Cross-repository correction is forbidden"; exit 1; }
 
           TASK_ID="${EVENT_TASK_ID:-}"
-          if [[ -z "$TASK_ID" && "$TITLE" =~ ^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)\] ]]; then
-            TASK_ID="${BASH_REMATCH[1]}"
-          fi
-          [[ "$TASK_ID" =~ ^(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)$ ]] \
-            || { echo "::error::Managed TASK or GOAL id not found"; exit 1; }
+          if [[ -z "$TASK_ID" && "$TITLE" =~ ^\[(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)\] ]]; then TASK_ID="${BASH_REMATCH[1]}"; fi
+          [[ "$TASK_ID" =~ ^(TASK-[0-9]{3,}|GOAL-[0-9]+|CORRECTION-[A-Z0-9-]+)$ ]] || { echo "::error::Managed id not found"; exit 1; }
 
-          COMMENTS="$(gh api "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" --paginate)"
-          ATTEMPTS="$(jq '[.[] | select((.body // "") | contains("<!-- juleswhile:correction-dispatch -->"))] | length' <<<"$COMMENTS")"
-          MAX_CORRECTIONS="$DEFAULT_MAX_CORRECTIONS"
-
-          if (( ATTEMPTS >= MAX_CORRECTIONS )); then
-            gh label create "state:blocked" --repo "$REPOSITORY" --color "D73A4A" --description "TASK requires intervention" --force
-            gh label create "human-decision-required" --repo "$REPOSITORY" --color "D93F0B" --description "Human decision required" --force
-            jq -n '{labels:["state:blocked","human-decision-required"]}' \
-              | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
+          ATTEMPTS="$(gh api "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" --paginate --jq '[.[] | select((.body // "") | contains("<!-- juleswhile:correction-dispatch -->"))] | length' | awk '{s+=$1} END{print s+0}')"
+          if (( ATTEMPTS >= DEFAULT_MAX_CORRECTIONS )); then
+            gh label create state:blocked --repo "$REPOSITORY" --color D73A4A --description "TASK requires intervention" --force
+            gh label create human-decision-required --repo "$REPOSITORY" --color D93F0B --description "Human decision required" --force
+            jq -n '{labels:["state:blocked","human-decision-required"]}' | gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --input - >/dev/null
             gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-limit -->
 
 ## 자동 보완 한도 초과
 
-자동 Correction이 \`${ATTEMPTS}/${MAX_CORRECTIONS}\`회 사용되었습니다. PR을 자동 재Dispatch하지 않고 사람 검토로 전환합니다." || true
+자동 Correction ${ATTEMPTS}/${DEFAULT_MAX_CORRECTIONS}회를 사용하여 사람 검토로 전환했습니다." || true
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           ATTEMPT=$((ATTEMPTS + 1))
-          TASK_ISSUE="${EVENT_TASK_ISSUE:-}"
           RUN_URL="${EVENT_RUN_URL:-${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}}"
-
           {
             echo "should_run=true"
             echo "pr_number=${PR_NUMBER}"
             echo "task_id=${TASK_ID}"
-            echo "task_issue=${TASK_ISSUE}"
+            echo "task_issue=${EVENT_TASK_ISSUE:-}"
             echo "head_ref=${HEAD_REF}"
             echo "head_sha=${HEAD_SHA}"
             echo "attempt=${ATTEMPT}"
             echo "run_url=${RUN_URL}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Validate Jules configuration
+      - name: Create and record Jules correction session
         if: steps.context.outputs.should_run == 'true'
-        env:
-          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          [[ -n "$JULES_API_KEY" ]] || { echo "::error::JULES_API_KEY is missing"; exit 1; }
-          [[ "$JULES_SOURCE_NAME" =~ ^sources/ ]] || { echo "::error::JULES_SOURCE_NAME is invalid"; exit 1; }
-
-      - name: Record correction dispatch intent
-        if: steps.context.outputs.should_run == 'true'
+        id: session
         env:
           GH_TOKEN: ${{ github.token }}
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ steps.context.outputs.pr_number }}
           TASK_ID: ${{ steps.context.outputs.task_id }}
+          TASK_ISSUE: ${{ steps.context.outputs.task_issue }}
+          HEAD_REF: ${{ steps.context.outputs.head_ref }}
+          HEAD_SHA: ${{ steps.context.outputs.head_sha }}
           ATTEMPT: ${{ steps.context.outputs.attempt }}
-          RUN_URL: ${{ steps.context.outputs.run_url }}
+          FAILED_RUN_URL: ${{ steps.context.outputs.run_url }}
         shell: bash
         run: |
           set -Eeuo pipefail
+          [[ -n "$JULES_API_KEY" ]] || { echo "::error::JULES_API_KEY missing"; exit 1; }
+          [[ "$JULES_SOURCE_NAME" =~ ^sources/ ]] || { echo "::error::JULES_SOURCE_NAME invalid"; exit 1; }
+
           gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-dispatch -->
 
 ## Jules Correction Dispatch
 
 - TASK: \`${TASK_ID}\`
 - Attempt: \`${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}\`
-- Failed validation: ${RUN_URL}
-- Controller run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+- Failed validation: ${FAILED_RUN_URL}
 
-동일 PR 브랜치에서 실패 원인만 최소 수정하고 전체 검증을 다시 실행하도록 Jules Session을 생성합니다."
-
-      - name: Create Jules correction session
-        if: steps.context.outputs.should_run == 'true'
-        env:
-          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
-          HEAD_REF: ${{ steps.context.outputs.head_ref }}
-          HEAD_SHA: ${{ steps.context.outputs.head_sha }}
-          TASK_ID: ${{ steps.context.outputs.task_id }}
-          TASK_ISSUE: ${{ steps.context.outputs.task_issue }}
-          PR_NUMBER: ${{ steps.context.outputs.pr_number }}
-          ATTEMPT: ${{ steps.context.outputs.attempt }}
-          FAILED_RUN_URL: ${{ steps.context.outputs.run_url }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
+동일 PR 브랜치에서 실패 원인만 최소 수정하도록 Jules에 요청합니다."
 
           PROMPT="$(cat <<EOF
-You are correcting an existing Juleswhile Pull Request after CI validation failure.
-
+Correct the existing Juleswhile PR #${PR_NUMBER} for ${TASK_ID} after validation failure.
 Repository: ${GITHUB_REPOSITORY}
-TASK: ${TASK_ID}
 TASK Issue: ${TASK_ISSUE:-not-linked}
-Pull Request: #${PR_NUMBER}
 Existing branch: ${HEAD_REF}
 Failed commit: ${HEAD_SHA}
 Failed workflow: ${FAILED_RUN_URL}
-Correction attempt: ${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}
+Attempt: ${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}
 
-Mandatory contract:
-1. Read AGENTS.md, PROJECT_GOAL.md, ops/prompts/correct-task.md, the TASK contract, PR diff, and failed workflow logs.
-2. Work only on the existing branch ${HEAD_REF}.
-3. Do not create a new branch or a new Pull Request.
-4. Do not change the TASK objective, acceptance criteria, or allowed_paths.
-5. Fix only the root cause of the failed validation.
-6. Never delete, skip, or weaken failing tests or validation gates.
-7. Run all TASK validation commands and npm run ci when available.
-8. Push correction commits to ${HEAD_REF}; the existing PR #${PR_NUMBER} must update.
-9. If a safe correction is impossible, report BLOCKED and make no unrelated changes.
+Read AGENTS.md, PROJECT_GOAL.md, ops/prompts/correct-task.md, the TASK contract, PR diff, and failed logs. Work only on ${HEAD_REF}. Do not create a new branch or PR. Do not change scope or acceptance criteria. Never delete, skip, or weaken tests. Fix only the root cause, run all validation commands and npm run ci when available, then push correction commits to ${HEAD_REF}. If unsafe, report BLOCKED without unrelated changes.
 EOF
 )"
 
-          REQUEST_FILE="${RUNNER_TEMP}/jules-correction-request.json"
-          RESPONSE_FILE="${RUNNER_TEMP}/jules-correction-response.json"
-
-          jq -n \
-            --arg prompt "$PROMPT" \
-            --arg title "[${TASK_ID}] Correct PR #${PR_NUMBER} validation failure" \
-            --arg source "$JULES_SOURCE_NAME" \
-            --arg branch "$HEAD_REF" \
+          jq -n --arg prompt "$PROMPT" --arg title "[${TASK_ID}] Correct PR #${PR_NUMBER}" --arg source "$JULES_SOURCE_NAME" --arg branch "$HEAD_REF" \
             '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}' \
-            > "$REQUEST_FILE"
+            > "${RUNNER_TEMP}/request.json"
 
-          curl --fail-with-body --silent --show-error \
-            --connect-timeout 15 --max-time 60 \
+          curl --fail-with-body --silent --show-error --connect-timeout 15 --max-time 60 \
             -X POST "https://jules.googleapis.com/v1alpha/sessions" \
-            -H "Content-Type: application/json" \
-            -H "x-goog-api-key: ${JULES_API_KEY}" \
-            --data-binary "@${REQUEST_FILE}" > "$RESPONSE_FILE"
+            -H "Content-Type: application/json" -H "x-goog-api-key: ${JULES_API_KEY}" \
+            --data-binary "@${RUNNER_TEMP}/request.json" > "${RUNNER_TEMP}/response.json"
 
-          SESSION_NAME="$(jq -r '.name // empty' "$RESPONSE_FILE")"
-          SESSION_ID="$(jq -r '.id // (.name // "" | split("/") | last) // empty' "$RESPONSE_FILE")"
-          [[ -n "$SESSION_NAME" || -n "$SESSION_ID" ]] || { echo "::error::Jules response has no session identity"; jq '{error,message,state}' "$RESPONSE_FILE"; exit 1; }
+          SESSION_NAME="$(jq -r '.name // empty' "${RUNNER_TEMP}/response.json")"
+          SESSION_ID="$(jq -r '.id // (.name // "" | split("/") | last) // empty' "${RUNNER_TEMP}/response.json")"
+          [[ -n "$SESSION_NAME" || -n "$SESSION_ID" ]] || { echo "::error::No Jules session identity"; jq '{error,message,state}' "${RUNNER_TEMP}/response.json"; exit 1; }
 
-          echo "session_name=${SESSION_NAME}" >> "$GITHUB_OUTPUT"
-          echo "session_id=${SESSION_ID}" >> "$GITHUB_OUTPUT"
-
-      - name: Record correction session
-        if: steps.context.outputs.should_run == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.context.outputs.pr_number }}
-          TASK_ID: ${{ steps.context.outputs.task_id }}
-          ATTEMPT: ${{ steps.context.outputs.attempt }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
           gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "<!-- juleswhile:correction-session -->
 
 ## Jules Correction Session 생성 완료
 
-- TASK: \`${TASK_ID}\`
-- Attempt: \`${ATTEMPT}/${DEFAULT_MAX_CORRECTIONS}\`
 - Session: \`${SESSION_NAME:-unknown}\`
 - Session ID: \`${SESSION_ID:-unknown}\`
+- Existing branch: \`${HEAD_REF}\`
 
-Session은 기존 PR 브랜치에 수정 커밋을 Push해야 하며, 새 커밋이 올라오면 PR Validation이 자동 재실행됩니다."
+새 커밋이 Push되면 PR Validation이 자동 재실행됩니다."
