@@ -5,10 +5,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-import {
-  parse as parseYaml,
-  stringify as stringifyYaml,
-} from "yaml";
+import { stringify as stringifyYaml } from "yaml";
+
+import { loadTaskManifest } from "./task-manifest.js";
 
 const TASK_INDEX_PATH =
   "ops/tasks/task-index.yaml";
@@ -366,14 +365,10 @@ function parseArguments(
 }
 
 async function readTaskIndex(): Promise<TaskIndex> {
-  const content =
-    await fs.readFile(
-      TASK_INDEX_PATH,
-      "utf8",
-    );
-
   const parsed =
-    parseYaml(content) as TaskIndex;
+    (await loadTaskManifest(
+      TASK_INDEX_PATH,
+    )) as unknown as TaskIndex;
 
   if (!Array.isArray(parsed.tasks)) {
     fail(

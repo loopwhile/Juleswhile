@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
+import path from "node:path";
 import { parse, stringify } from "yaml";
 
 function required(name) {
@@ -23,9 +24,41 @@ if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
 const [owner, repo] = repository.split("/");
 const now = new Date().toISOString();
 
+function normalizeInclude(includePath) {
+  const normalized = includePath.replaceAll("\\", "/");
+  if (
+    normalized.startsWith("/") ||
+    normalized.startsWith("../") ||
+    normalized.includes("/../") ||
+    normalized === ".." ||
+    normalized.trim() === ""
+  ) {
+    throw new Error(`Unsafe TASK include path: ${includePath}`);
+  }
+  return normalized;
+}
+
+function collectTasks(filePath, seen = new Set()) {
+  const absolutePath = path.resolve(filePath);
+  if (seen.has(absolutePath)) {
+    throw new Error(`Cyclic TASK include detected: ${filePath}`);
+  }
+  seen.add(absolutePath);
+
+  const manifest = parse(readFileSync(absolutePath, "utf8"));
+  const ownTasks = Array.isArray(manifest?.tasks) ? manifest.tasks : [];
+  const includes = Array.isArray(manifest?.includes) ? manifest.includes : [];
+  const includedTasks = includes.flatMap((includePath) =>
+    collectTasks(path.join(path.dirname(absolutePath), normalizeInclude(includePath)), seen),
+  );
+
+  seen.delete(absolutePath);
+  return [...ownTasks, ...includedTasks];
+}
+
 const taskPath = "ops/tasks/task-index.yaml";
 const taskIndex = parse(readFileSync(taskPath, "utf8"));
-const templates = (taskIndex.tasks ?? [])
+const templates = collectTasks(taskPath)
   .filter((task) => task.kind === "template")
   .map((task) => ({
     ...task,
@@ -42,8 +75,11 @@ const templates = (taskIndex.tasks ?? [])
 taskIndex.project_id = projectId;
 taskIndex.generated_at = now;
 taskIndex.updated_at = now;
-taskIndex.tasks = templates;
+taskIndex.includes = ["task-templates.yaml", "task-history.yaml"];
+taskIndex.tasks = [];
 writeFileSync(taskPath, stringify(taskIndex, { lineWidth: 100 }), "utf8");
+writeFileSync("ops/tasks/task-templates.yaml", stringify({ tasks: templates }, { lineWidth: 100 }), "utf8");
+writeFileSync("ops/tasks/task-history.yaml", stringify({ tasks: [] }, { lineWidth: 100 }), "utf8");
 
 const statePath = "ops/state/project-state.json";
 const state = JSON.parse(readFileSync(statePath, "utf8"));

@@ -1,0 +1,1093 @@
+tasks:
+  - kind: task
+    id: TASK-001
+    title: Juleswhile Smoke Test Verifier
+    role: verifier
+    type: verification
+    status: COMPLETED
+    priority: P1
+    enabled: false
+    objective: Verify the planner results and orchestration by passing validation commands.
+    depends_on: []
+    inputs:
+      - docs/01_overview/juleswhile-smoke-test.md
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    outputs:
+      - docs/01_overview/juleswhile-smoke-test-result.md
+    acceptance_criteria:
+      - Schema validation passes.
+      - Task graph validation passes.
+    allowed_paths:
+      - docs/01_overview/juleswhile-smoke-test-result.md
+    forbidden_paths:
+      - .github/**
+      - ops/schemas/**
+      - ops/scripts/**
+    forbidden_actions:
+      - Do not implement features
+      - Do not modify secrets
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+    risk_level: low
+    approval_policy: automatic
+    parallelizable: false
+    resource_locks: []
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 60
+    stitch:
+      allowed: false
+    metadata:
+      goal_issue_number: 1
+      issue_number: 5
+      created_at: 2026-06-27T00:00:00+09:00
+      updated_at: 2026-06-27T13:55:54.076595Z
+      created_by: project-planner
+      tags:
+        - smoke-test
+  - kind: task
+    id: TASK-002
+    title: Harden Juleswhile control-plane workflows
+    role: developer
+    type: bug-fix
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Harden GitHub Actions control-plane state transitions, Planner Pull Request metadata
+      contracts, Jules Source validation, and TASK summary consistency.
+    depends_on: []
+    inputs:
+      - docs/01_overview/juleswhile-smoke-test.md
+      - .github/workflows/**
+      - ops/schemas/project-state.schema.json
+      - ops/scripts/validate-task-graph.ts
+    outputs:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/schemas/project-state.schema.json
+      - ops/scripts/validate-task-graph.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    acceptance_criteria:
+      - Planner PR descriptions require the Juleswhile PR marker and Goal Issue reference.
+      - The project-state schema accepts the real Jules Source resource name.
+      - TASK Manifest counts are validated against project-state taskSummary.
+      - Workflow state and label mutations use GitHub REST APIs instead of gh edit commands.
+      - Goal Issues are completed automatically after their Planner PR is merged.
+      - Solo-operator control-plane merges require the explicit approval:owner-approved label.
+      - All Workflow YAML files parse successfully with the Node.js yaml package.
+      - npm run ci passes.
+      - Automation variables remain disabled.
+    allowed_paths:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/schemas/project-state.schema.json
+      - ops/scripts/validate-task-graph.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    forbidden_paths:
+      - .github/workflows/06-reconciler.yml
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/schemas/task.schema.json
+      - netlify.toml
+      - src/**
+      - content/**
+    forbidden_actions:
+      - Enable AUTOMATION_ENABLED.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Modify Secrets or expose credentials.
+      - Change Netlify site configuration.
+      - Bypass Pull Request validation.
+      - Directly push Jules-generated work to main.
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run typecheck
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+    metadata:
+      goal_issue_number: 1
+      issue_number: 3
+      created_at: 2026-06-27T09:30:44Z
+      updated_at: 2026-06-27T11:43:29Z
+      created_by: user
+      tags:
+        - control-plane
+        - hardening
+        - github-actions
+  - kind: task
+    id: TASK-003
+    title: Implement quota ledger and dispatch intent idempotency
+    role: developer
+    type: bug-fix
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Harden Juleswhile runtime execution accounting so TASK selection, quota reservation,
+      Jules Session creation, and stale dispatch recovery are based on append-only GitHub runtime
+      evidence rather than mutable project-state quota counters or post-hoc session comments alone.
+    depends_on: []
+    inputs:
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - GitHub Issue
+      - ops/scripts/select-next-task.ts
+      - ops/scripts/dispatch-jules.ts
+      - ops/scripts/reconcile-project.ts
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/05-next-task.yml
+      - ops/state/project-state.json
+    outputs:
+      - ops/scripts/select-next-task.ts
+      - ops/scripts/dispatch-jules.ts
+      - ops/scripts/reconcile-project.ts
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/05-next-task.yml
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    acceptance_criteria:
+      - TASK selection counts same-day quota reservations and committed Jules Sessions from GitHub
+        Issue comments, not only project-state.json.
+      - TASK selection writes an append-only quota reservation marker before dispatching a TASK.
+      - Quota markers include date, category, TASK ID, Issue number, workflow run URL or ID, and
+        reservation status.
+      - Jules dispatch records an append-only dispatch intent marker before calling the Jules API.
+      - Successful Jules Session creation commits the quota reservation and links it to the Session
+        ID and name.
+      - Failed Jules Session creation releases or invalidates the quota reservation with a reason.
+      - If a dispatch intent exists but no Session marker exists, the dispatcher does not create
+        another Session automatically unless the previous attempt is explicitly released or
+        reconciled.
+      - Reconciler distinguishes stale reservation, dispatch intent, committed session, released
+        quota, and unknown dispatch outcome before restoring state:ready.
+      - Existing successful task-dispatch markers remain backward compatible.
+      - npm run validate:schemas passes.
+      - npm run validate:task-graph passes.
+      - npm run typecheck passes.
+      - npm run build passes.
+      - npm run ci passes.
+      - git diff --check passes.
+    allowed_paths:
+      - ops/scripts/select-next-task.ts
+      - ops/scripts/dispatch-jules.ts
+      - ops/scripts/reconcile-project.ts
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/05-next-task.yml
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    forbidden_paths:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/06-reconciler.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/08-netlify-status.yml
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/schemas/**
+      - package.json
+      - package-lock.json
+      - netlify.toml
+      - src/**
+      - content/**
+    forbidden_actions:
+      - Enable AUTOMATION_ENABLED.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Modify Secrets or expose credentials.
+      - Change Netlify site configuration.
+      - Bypass Pull Request validation.
+      - Directly push Jules-generated work to main.
+      - Delete existing tests or weaken validation gates.
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run typecheck
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - jules-dispatch
+      - quota-ledger
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+    metadata:
+      goal_issue_number: 1
+      issue_number: 11
+      created_at: 2026-06-28T11:57:48Z
+      updated_at: 2026-06-28T12:13:00Z
+      created_by: project-planner
+      tags:
+        - control-plane
+        - quota
+        - dispatch-idempotency
+        - reliability
+  - kind: task
+    id: TASK-004
+    title: Reconcile runtime state with Jules API sessions
+    role: developer
+    type: bug-fix
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Change the Reconciler to verify real Jules REST API Session state before recovering
+      runtime TASK state, while preserving TASK-003 quota ledger and dispatch intent evidence.
+    depends_on:
+      - TASK-003
+    inputs:
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - operator-guide.md
+      - GitHub Issue
+      - ops/scripts/reconcile-project.ts
+      - ops/scripts/dispatch-jules.ts
+      - .github/workflows/06-reconciler.yml
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - ops/schemas/task.schema.json
+      - package.json
+    outputs:
+      - ops/scripts/reconcile-project.ts
+      - ops/scripts/jules-api.ts
+      - ops/scripts/jules-api.test.ts
+      - ops/scripts/reconcile-project.test.ts
+      - ops/scripts/verify-repository-integrity.ts
+      - ops/scripts/verify-repository-integrity.test.ts
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/06-reconciler.yml
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    acceptance_criteria:
+      - Reconciler queries Jules REST API Sessions with JULES_API_KEY and never logs API keys,
+        request headers, or full prompts.
+      - JULES_API_BASE_URL can override the default base URL for tests.
+      - API client applies request timeout and distinguishes auth, not found, rate limit, server,
+        timeout, network, and invalid response failures.
+      - Existing TASK-003 quota ledger, dispatch intent, dispatch outcome, and task-dispatch markers
+        remain backward compatible.
+      - Issue comments are read with pagination beyond the first 100 comments.
+      - Stale RUNNING TASKs are not moved to RETRY_WAIT without Jules API state evidence.
+      - COMPLETED Sessions with a traceable repository Pull Request are moved to PR tracking state.
+      - COMPLETED Sessions without a traceable Pull Request are BLOCKED with an Incident.
+      - Human-intervention Session states are BLOCKED with idempotent Incident markers.
+      - FAILED Sessions move to RETRY_WAIT or BLOCKED according to correction limits.
+      - Missing, ambiguous, transient API-error, and unknown Session states do not create new Jules
+        Sessions automatically.
+      - Dry-run does not mutate GitHub state and includes API observations in the JSON report.
+      - npm run lint passes.
+      - npm run validate:schemas passes.
+      - npm run validate:task-graph passes.
+      - npm run typecheck passes.
+      - npm test passes.
+      - npm run build passes.
+      - npm run ci passes.
+      - git diff --check passes.
+    allowed_paths:
+      - ops/scripts/reconcile-project.ts
+      - ops/scripts/jules-api.ts
+      - ops/scripts/*.test.ts
+      - ops/scripts/verify-repository-integrity.ts
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/06-reconciler.yml
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    forbidden_paths:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/08-netlify-status.yml
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/schemas/**
+      - package-lock.json
+      - netlify.toml
+      - src/**
+      - content/**
+    forbidden_actions:
+      - Create a new real Jules Session.
+      - Enable AUTOMATION_ENABLED.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Read or print Secret values.
+      - Change Netlify site configuration.
+      - Bypass Pull Request validation.
+      - Directly push to main.
+      - Delete existing tests or weaken validation gates.
+    validation_commands:
+      - npm run lint
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run typecheck
+      - npm test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - jules-api
+      - reconciler
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 14
+      created_at: 2026-06-28T12:13:00Z
+      updated_at: 2026-06-29T07:12:23.489226Z
+      created_by: user
+      tags:
+        - control-plane
+        - jules-api
+        - reconciler
+        - reliability
+  - kind: task
+    id: TASK-005
+    title: Complete TASK only after production deployment
+    role: developer
+    type: bug-fix
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Change TASK completion from merge-time completion to production deployment verified
+      completion, while preserving exactly one state label and delaying next-TASK evaluation.
+    depends_on:
+      - TASK-004
+    inputs:
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - operator-guide.md
+      - GitHub Issue
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/scripts/task-state-transition.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    outputs:
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/scripts/task-state-transition.ts
+      - ops/scripts/task-state-transition.test.ts
+      - ops/scripts/deployment-workflow-contract.test.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    acceptance_criteria:
+      - A merged TASK Pull Request transitions its Issue to state:deploying and leaves the Issue
+        open.
+      - Production deployment ready transitions the Issue to state:completed and deployment:ready.
+      - Production deployment ready closes the Issue with completed reason.
+      - Production deployment failure transitions the Issue to state:deployment-review.
+      - Production deployment failure applies deployment:failed and leaves the Issue open.
+      - NETLIFY_STATUS_ENABLED false never marks a TASK completed.
+      - Existing state labels are replaced atomically so exactly one state label remains.
+      - Non-state TASK labels are preserved.
+      - Deployment comments are idempotent by merge SHA and deploy identity.
+      - Next TASK evaluation occurs only after deployment_completed for TASK implementation PRs.
+      - Goal Planner PR processing remains backward compatible.
+      - npm run lint passes.
+      - npm run validate:schemas passes.
+      - npm run validate:task-graph passes.
+      - npm run typecheck passes.
+      - npm test passes.
+      - npm run build passes.
+      - npm run ci passes.
+      - git diff --check passes.
+    allowed_paths:
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/08-netlify-status.yml
+      - ops/scripts/task-state-transition.ts
+      - ops/scripts/task-state-transition.test.ts
+      - ops/scripts/deployment-workflow-contract.test.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    forbidden_paths:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/06-reconciler.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/schemas/**
+      - package-lock.json
+      - netlify.toml
+      - src/**
+      - content/**
+    forbidden_actions:
+      - Create a real Jules Session.
+      - Start a new Netlify deployment.
+      - Enable AUTOMATION_ENABLED.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Read or print Secret values.
+      - Change the Netlify Site configuration.
+      - Bypass Pull Request validation.
+      - Directly push generated work to main.
+      - Delete tests or weaken validation gates.
+    validation_commands:
+      - npm run lint
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run typecheck
+      - npm test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - deployment-state
+      - task-state
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 16
+      created_at: 2026-06-29T07:12:23.489226Z
+      updated_at: 2026-06-29T07:33:33.927099Z
+      created_by: user
+      tags:
+        - control-plane
+        - deployment
+        - lifecycle
+        - reliability
+  - kind: task
+    id: TASK-006
+    title: Make Jules Session creation atomic
+    role: developer
+    type: bug-fix
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Guarantee that one tracked TASK dispatch attempt creates at most one Jules Session, even
+      during Workflow reruns, force execution, partial failures, and delayed evidence recording.
+    depends_on:
+      - TASK-005
+    inputs:
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - operator-guide.md
+      - GitHub Issue
+      - .github/workflows/02-dispatch-jules.yml
+      - ops/scripts/dispatch-jules.ts
+      - ops/scripts/session-dispatch-atomicity.ts
+      - ops/scripts/reconcile-project.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    outputs:
+      - .github/workflows/02-dispatch-jules.yml
+      - ops/scripts/dispatch-jules.ts
+      - ops/scripts/session-dispatch-atomicity.ts
+      - ops/scripts/session-dispatch-atomicity.test.ts
+      - ops/scripts/dispatch-workflow-contract.test.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    acceptance_criteria:
+      - Live Session creation requires GitHub Actions and the canonical Dispatcher Workflow.
+      - Live Session creation requires a Tracking Issue.
+      - Dispatch attempt keys are deterministic for one GitHub Workflow Run.
+      - Workflow reruns reuse the same dispatch attempt identity.
+      - force never bypasses existing Session evidence.
+      - force never bypasses unresolved Dispatch Intent protection.
+      - A committed quota ledger Session can reconstruct a missing canonical Session marker.
+      - Canonical Session evidence is recorded before the Dispatcher returns success.
+      - The Workflow does not create a second canonical Session comment.
+      - Unknown Jules API outcomes remain blocked until reconciliation.
+      - Dry-run remains available without calling the Jules API.
+      - No real Jules Session is created during validation.
+      - npm run lint passes.
+      - npm run validate:schemas passes.
+      - npm run validate:task-graph passes.
+      - npm run typecheck passes.
+      - npm test passes.
+      - npm run build passes.
+      - npm run ci passes.
+      - git diff --check passes.
+    allowed_paths:
+      - .github/workflows/02-dispatch-jules.yml
+      - ops/scripts/dispatch-jules.ts
+      - ops/scripts/session-dispatch-atomicity.ts
+      - ops/scripts/session-dispatch-atomicity.test.ts
+      - ops/scripts/dispatch-workflow-contract.test.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    forbidden_paths:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/06-reconciler.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/08-netlify-status.yml
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/schemas/**
+      - package-lock.json
+      - netlify.toml
+      - src/**
+      - content/**
+    forbidden_actions:
+      - Create a real Jules Session during implementation or testing.
+      - Read or print Secret values.
+      - Disable unresolved Dispatch Intent protection.
+      - Allow force to create a duplicate Jules Session.
+      - Enable AUTOMATION_ENABLED.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Change Netlify configuration.
+      - Bypass Pull Request validation.
+      - Directly push generated work to main.
+      - Delete tests or weaken validation gates.
+    validation_commands:
+      - npm run lint
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run typecheck
+      - npm test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - jules-dispatch
+      - session-creation
+      - quota-ledger
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 18
+      created_at: 2026-06-29T07:33:33.927099Z
+      updated_at: 2026-06-29T08:10:26.039509Z
+      created_by: user
+      tags:
+        - control-plane
+        - jules
+        - dispatch
+        - atomicity
+        - idempotency
+  - kind: task
+    id: TASK-007
+    title: Rebuild runtime state projection
+    role: developer
+    type: maintenance
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Rebuild the committed runtime state projection deterministically from canonical GitHub
+      Issues, Pull Requests, Jules Session observations, resource locks, and quota ledger evidence.
+    depends_on:
+      - TASK-006
+    inputs:
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - operator-guide.md
+      - GitHub Issue
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - ops/schemas/project-state.schema.json
+      - ops/scripts/reconcile-project.ts
+      - ops/scripts/validate-task-graph.ts
+      - .github/workflows/06-reconciler.yml
+    outputs:
+      - ops/scripts/project-state-projection.ts
+      - ops/scripts/project-state-projection.test.ts
+      - ops/scripts/rebuild-project-state.ts
+      - ops/scripts/validate-task-graph.ts
+      - .github/workflows/06-reconciler.yml
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    acceptance_criteria:
+      - Manifest metadata.issue_number defines the canonical Issue for each TASK ID.
+      - Duplicate and superseded TASK Issues are excluded from canonical task counts.
+      - Multiple state labels are reported as Projection drift.
+      - Runtime state label priority is deterministic.
+      - taskSummary lifecycle values are derived from canonical GitHub Issues.
+      - taskSummary lifecycle values sum exactly to taskSummary.total.
+      - Active Jules Sessions are reconstructed from canonical Session markers and Jules API
+        observations.
+      - Active Pull Requests are reconstructed from open repository Pull Requests.
+      - Resource locks are reconstructed for active TASKs.
+      - Quota usage is reconstructed from latest append-only ledger outcomes.
+      - Dry-run reports drift without modifying project-state.json.
+      - Apply mode writes project-state.json only when material state changes.
+      - Projection output passes project-state JSON Schema validation before replacement.
+      - Projection failure preserves the last valid snapshot.
+      - Identical source evidence produces identical Projection output.
+      - npm run lint passes.
+      - npm run validate:schemas passes.
+      - npm run validate:task-graph passes.
+      - npm run typecheck passes.
+      - npm test passes.
+      - npm run build passes.
+      - npm run ci passes.
+      - git diff --check passes.
+    allowed_paths:
+      - .github/workflows/06-reconciler.yml
+      - ops/scripts/project-state-projection.ts
+      - ops/scripts/project-state-projection.test.ts
+      - ops/scripts/rebuild-project-state.ts
+      - ops/scripts/validate-task-graph.ts
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - package.json
+    forbidden_paths:
+      - .github/workflows/01-goal-intake.yml
+      - .github/workflows/02-dispatch-jules.yml
+      - .github/workflows/03-pr-validation.yml
+      - .github/workflows/04-auto-merge.yml
+      - .github/workflows/05-next-task.yml
+      - .github/workflows/07-content-schedule.yml
+      - .github/workflows/08-netlify-status.yml
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/schemas/**
+      - package-lock.json
+      - netlify.toml
+      - src/**
+      - content/**
+    forbidden_actions:
+      - Create a real Jules Session.
+      - Enable AUTOMATION_ENABLED.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Read or print Secret values.
+      - Overwrite project-state.json before Schema validation.
+      - Count superseded TASK Issues as canonical runtime state.
+      - Treat Manifest READY and BLOCKED counts as runtime authority.
+      - Change Netlify configuration.
+      - Bypass Pull Request validation.
+      - Directly push Jules-generated work to main.
+      - Delete tests or weaken validation gates.
+    validation_commands:
+      - npm run lint
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run typecheck
+      - npm test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - reconciler
+      - runtime-state
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 20
+      created_at: 2026-06-29T08:10:26.039509Z
+      updated_at: 2026-06-29T09:11:31Z
+      created_by: user
+      tags:
+        - control-plane
+        - reconciler
+        - runtime-state
+        - projection
+        - recovery
+  - kind: task
+    id: TASK-008
+    title: Operational readiness and supply-chain hardening
+    role: developer
+    type: maintenance
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Establish operational readiness for a live Jules pilot by repairing committed runtime
+      projection drift, hardening GitHub Actions supply-chain and permissions, adding Dependabot and
+      provenance controls where supported, documenting GitHub Free private repository constraints,
+      and defining guarded automation activation criteria.
+    depends_on:
+      - TASK-007
+    inputs:
+      - AGENTS.md
+      - README.md
+      - PROJECT_GOAL.md
+      - operator-guide.md
+      - GitHub Issue
+      - .github/workflows/**
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - ops/schemas/**
+      - ops/scripts/**
+      - package.json
+      - package-lock.json
+    outputs:
+      - .github/workflows/**
+      - .github/dependabot.yml
+      - .github/CODEOWNERS
+      - .github/actions/**
+      - ops/scripts/**
+      - ops/schemas/**
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - docs/07_operations/**
+      - operator-guide.md
+      - README.md
+      - package.json
+      - package-lock.json
+    acceptance_criteria:
+      - Committed runtime Projection aligns with GitHub authority.
+      - All external GitHub Actions are pinned to immutable full commit SHAs.
+      - Workflow GITHUB_TOKEN permissions are minimized and documented.
+      - Checkout credentials, shell execution, and untrusted input handling are audited and hardened.
+      - Dependabot configuration exists for npm and GitHub Actions without automatic merging.
+      - SBOM, package-lock/build hashes, audit, and provenance support are implemented or documented
+        with plan constraints.
+      - Main direct-push protection has detective/compensating controls when server-side enforcement
+        is unavailable.
+      - Operational readiness documentation and validation automation are added.
+      - No real Jules Session is created during TASK-008.
+      - npm run lint passes.
+      - npm run validate:schemas passes.
+      - npm run validate:task-graph passes.
+      - npm run validate:supply-chain passes.
+      - npm run typecheck passes.
+      - npm test passes.
+      - npm run build passes.
+      - npm run ci passes.
+      - git diff --check passes.
+    allowed_paths:
+      - .github/workflows/**
+      - .github/dependabot.yml
+      - .github/CODEOWNERS
+      - .github/actions/**
+      - ops/scripts/**
+      - ops/schemas/**
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+      - docs/07_operations/**
+      - operator-guide.md
+      - README.md
+      - package.json
+      - package-lock.json
+    forbidden_paths:
+      - src/**
+      - content/**
+      - public/**
+      - netlify.toml
+      - PROJECT_GOAL.md
+      - Authentication, payment, credential, and secret value files.
+    forbidden_actions:
+      - Create a real Jules Session during TASK-008.
+      - Enable AUTOMATION_ENABLED during TASK-008.
+      - Enable CONTENT_AUTOMATION_ENABLED.
+      - Read or print Secret values.
+      - Change Netlify configuration.
+      - Change repository visibility or billing plan.
+      - Bypass Pull Request validation.
+      - Directly push generated work to main.
+      - Delete tests or weaken validation gates.
+    validation_commands:
+      - npm run lint
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run validate:supply-chain
+      - npm run typecheck
+      - npm test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - github-actions
+      - supply-chain
+      - runtime-state
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 120
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 22
+      created_at: 2026-06-29T09:11:31Z
+      updated_at: 2026-06-29T10:50:01Z
+      created_by: user
+      tags:
+        - control-plane
+        - github-actions
+        - supply-chain
+        - operational-readiness
+        - security
+  - kind: task
+    id: TASK-009
+    title: Live Jules Session production pilot
+    role: verifier
+    type: verification
+    status: COMPLETED
+    priority: P0
+    enabled: false
+    objective: Run one live production pilot through the canonical Jules Dispatcher after TASK-008
+      hardening is completed in production, creating exactly one real Jules Session and verifying
+      the PR, CI, Custom Auto Merge, Netlify Production, and completed lifecycle path.
+    depends_on:
+      - TASK-008
+    inputs:
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - operator-guide.md
+      - GitHub Issue
+      - docs/07_operations/operational-hardening.md
+      - .github/workflows/02-dispatch-jules.yml
+      - ops/tasks/task-index.yaml
+      - ops/state/project-state.json
+    outputs:
+      - docs/07_operations/live-jules-pilot-2026-06-29.md
+    acceptance_criteria:
+      - Exactly one real Jules Session is created through the canonical Dispatcher.
+      - A quota reservation marker exists before Session creation.
+      - A dispatch intent marker exists before Session creation.
+      - The quota reservation is committed with the Session ID.
+      - Exactly one canonical Session marker exists.
+      - Duplicate Session count is zero.
+      - Jules changes only docs/07_operations/live-jules-pilot-2026-06-29.md.
+      - PR marker and TASK Issue reference are correct.
+      - CI succeeds.
+      - Custom Auto Merge succeeds after owner approval policy conditions are met.
+      - Netlify Production succeeds.
+      - Issue transitions to state:completed with closed reason completed.
+      - Projection returns active Session 0.
+      - No unresolved dispatch outcome remains.
+    allowed_paths:
+      - docs/07_operations/live-jules-pilot-2026-06-29.md
+    forbidden_paths:
+      - .github/**
+      - ops/**
+      - package.json
+      - package-lock.json
+      - netlify.toml
+      - src/**
+      - content/**
+      - public/**
+      - PROJECT_GOAL.md
+      - AGENTS.md
+    forbidden_actions:
+      - Read or print Secret values.
+      - Modify workflows.
+      - Create another TASK.
+      - Create another Jules Session.
+      - Push directly to main.
+      - Change dependencies.
+      - Change Netlify settings.
+      - Change authentication, payment, or credential policy.
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run validate:supply-chain
+      - npm run lint
+      - npm test
+      - npm run build
+      - npm run ci
+    risk_level: low
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - live-jules-pilot
+      - jules-dispatch
+      - runtime-state
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 90
+    stitch:
+      allowed: false
+      required: false
+      expected_outputs: []
+    metadata:
+      goal_issue_number: 1
+      issue_number: 26
+      created_at: 2026-06-29T10:50:01Z
+      updated_at: 2026-06-29T12:02:01Z
+      created_by: user
+      tags:
+        - live-pilot
+        - jules
+        - production
+        - verification
+  - kind: task
+    id: TASK-010
+    title: Improve Juleswhile clone-init template workflow
+    role: developer
+    type: maintenance
+    status: RUNNING
+    priority: P0
+    enabled: true
+    objective: Improve the Juleswhile template so new projects can start with the clone/init/bootstrap
+      workflow, then operate through GitHub Issues, Jules, PR validation, auto-merge, Netlify
+      deployment verification, and a static operational dashboard.
+    depends_on:
+      - TASK-009
+    inputs:
+      - "GitHub Issue #66"
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - QUICKSTART.md
+      - README.md
+      - operator-guide.md
+      - ops/tasks/task-index.yaml
+      - ops/scripts/**
+      - ops/schemas/task.schema.json
+      - .github/workflows/**
+      - netlify.toml
+    outputs:
+      - QUICKSTART.md
+      - README.md
+      - operator-guide.md
+      - ops/tasks/task-index.yaml
+      - ops/tasks/task-history.yaml
+      - ops/tasks/task-templates.yaml
+      - ops/scripts/**
+      - ops/schemas/task.schema.json
+      - ops/state/project-state.json
+      - package.json
+      - dist/index.html
+    acceptance_criteria:
+      - QUICKSTART no longer rejects clone/init and documents the canonical clone/init bootstrap
+        path.
+      - TASK manifest schema accepts optional includes while preserving inline tasks.
+      - Validation and runtime scripts load TASK data through a shared merged manifest loader.
+      - Self-improvement templates are disabled by default and require human or
+        human-before-execution approval.
+      - Dashboard build renders project status, task counts, quotas, active sessions, PRs, Netlify
+        state, blocked items, and next action without token values.
+      - Required validation commands pass or any failures are documented.
+    allowed_paths:
+      - QUICKSTART.md
+      - README.md
+      - operator-guide.md
+      - AGENTS.md
+      - PROJECT_GOAL.md
+      - ops/tasks/**
+      - ops/scripts/**
+      - ops/schemas/task.schema.json
+      - ops/state/project-state.json
+      - package.json
+      - package-lock.json
+      - netlify.toml
+      - .github/workflows/**
+    forbidden_paths:
+      - .github/ISSUE_TEMPLATE/**
+      - .github/pull_request_template.md
+      - src/auth/**
+      - src/payment/**
+      - content/**
+    forbidden_actions:
+      - Enable AUTOMATION_ENABLED or CONTENT_AUTOMATION_ENABLED.
+      - Expose, request, or log secrets.
+      - Bypass Pull Request validation or directly merge work.
+      - Create paid infrastructure or external deployment resources.
+    validation_commands:
+      - npm run validate:schemas
+      - npm run validate:task-graph
+      - npm run validate:supply-chain
+      - npm run typecheck
+      - npm test
+      - npm run build
+      - npm run ci
+      - git diff --check
+    risk_level: high
+    approval_policy: human
+    parallelizable: false
+    resource_locks:
+      - control-plane
+      - template-runtime
+    conflicts_with: []
+    retry_policy:
+      max_corrections: 2
+      timeout_minutes: 120
+    stitch:
+      allowed: false
+    metadata:
+      goal_issue_number: 1
+      issue_number: 66
+      created_at: 2026-07-01T09:00:00Z
+      updated_at: 2026-07-01T09:00:00Z
+      created_by: user
+      tags:
+        - control-plane
+        - template
+        - bootstrap
+        - dashboard

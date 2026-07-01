@@ -4,13 +4,12 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-import { parse as parseYaml } from "yaml";
-
 import {
   JulesApiClient,
   JulesApiError,
   type JulesSession,
 } from "./jules-api.js";
+import { loadTaskManifest } from "./task-manifest.js";
 
 const TASK_INDEX_PATH = "ops/tasks/task-index.yaml";
 
@@ -536,8 +535,9 @@ async function listComments(
 async function readTaskIndex(
   filePath: string,
 ): Promise<Map<string, TaskContract>> {
-  const content = await fs.readFile(filePath, "utf8");
-  const parsed = parseYaml(content) as TaskIndex;
+  const parsed = (await loadTaskManifest(
+    filePath,
+  )) as unknown as TaskIndex;
 
   if (!Array.isArray(parsed.tasks)) {
     fail(`${filePath}에 tasks 배열이 없습니다.`);

@@ -4,7 +4,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-import { parse as parseYaml } from "yaml";
+import { loadTaskManifest } from "./task-manifest.js";
 
 const TASK_INDEX_PATH = "ops/tasks/task-index.yaml";
 
@@ -384,53 +384,11 @@ function parseArguments(
   };
 }
 
-async function readTextFile(
-  filePath: string,
-): Promise<string> {
-  try {
-    return await fs.readFile(
-      filePath,
-      "utf8",
-    );
-  } catch (error) {
-    throw new Error(
-      `파일을 읽을 수 없습니다: ${filePath}`,
-      {
-        cause: error,
-      },
-    );
-  }
-}
-
 async function readTaskIndex(): Promise<TaskIndex> {
-  const content =
-    await readTextFile(TASK_INDEX_PATH);
-
-  let parsed: unknown;
-
-  try {
-    parsed = parseYaml(content);
-  } catch (error) {
-    throw new Error(
-      `${TASK_INDEX_PATH} 파싱에 실패했습니다.`,
-      {
-        cause: error,
-      },
-    );
-  }
-
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    Array.isArray(parsed)
-  ) {
-    fail(
-      `${TASK_INDEX_PATH}의 최상위 값은 객체여야 합니다.`,
-    );
-  }
-
   const taskIndex =
-    parsed as Partial<TaskIndex>;
+    (await loadTaskManifest(
+      TASK_INDEX_PATH,
+    )) as unknown as Partial<TaskIndex>;
 
   if (!Array.isArray(taskIndex.tasks)) {
     fail(
