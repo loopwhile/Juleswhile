@@ -1,0 +1,138 @@
+name: "00 · Control Plane Preflight"
+
+on:
+  workflow_dispatch:
+    inputs:
+      require_netlify:
+        description: "Require Netlify secrets and variables"
+        required: false
+        default: true
+        type: boolean
+      require_automation_disabled:
+        description: "Fail unless AUTOMATION_ENABLED is false"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  preflight:
+    name: Validate repository bootstrap and external configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      JULES_SOURCE_NAME: ${{ vars.JULES_SOURCE_NAME }}
+      AUTOMATION_ENABLED: ${{ vars.AUTOMATION_ENABLED || 'false' }}
+      CONTENT_AUTOMATION_ENABLED: ${{ vars.CONTENT_AUTOMATION_ENABLED || 'false' }}
+      JULES_MAX_CONCURRENCY: ${{ vars.JULES_MAX_CONCURRENCY || '' }}
+      NETLIFY_STATUS_ENABLED: ${{ vars.NETLIFY_STATUS_ENABLED || 'false' }}
+      NETLIFY_PRODUCTION_BRANCH: ${{ vars.NETLIFY_PRODUCTION_BRANCH || '' }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Validate repository settings and required configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          FAILURES=()
+
+          REPO_JSON="$(gh api "repos/${REPOSITORY}")"
+          DEFAULT_BRANCH="$(jq -r '.default_branch' <<<"$REPO_JSON")"
+          ALLOW_SQUASH="$(jq -r '.allow_squash_merge' <<<"$REPO_JSON")"
+          DELETE_BRANCH="$(jq -r '.delete_branch_on_merge' <<<"$REPO_JSON")"
+
+          [[ "$DEFAULT_BRANCH" == "main" ]] || FAILURES+=("default branch must be main")
+          [[ "$ALLOW_SQUASH" == "true" ]] || FAILURES+=("squash merge must be enabled")
+          [[ -n "$JULES_API_KEY" ]] || FAILURES+=("JULES_API_KEY secret is missing")
+          [[ "$JULES_SOURCE_NAME" =~ ^sources/ ]] || FAILURES+=("JULES_SOURCE_NAME variable is missing or invalid")
+          [[ "$CONTENT_AUTOMATION_ENABLED" == "false" ]] || FAILURES+=("CONTENT_AUTOMATION_ENABLED must remain false during bootstrap")
+          [[ "$JULES_MAX_CONCURRENCY" == "1" ]] || FAILURES+=("JULES_MAX_CONCURRENCY must be 1 during bootstrap")
+
+          if [[ "${{ inputs.require_automation_disabled }}" == "true" && "$AUTOMATION_ENABLED" != "false" ]]; then
+            FAILURES+=("AUTOMATION_ENABLED must be false during preflight")
+          fi
+
+          if [[ "${{ inputs.require_netlify }}" == "true" ]]; then
+            [[ -n "$NETLIFY_AUTH_TOKEN" ]] || FAILURES+=("NETLIFY_AUTH_TOKEN secret is missing")
+            [[ -n "$NETLIFY_SITE_ID" ]] || FAILURES+=("NETLIFY_SITE_ID secret is missing")
+            [[ "$NETLIFY_STATUS_ENABLED" == "true" ]] || FAILURES+=("NETLIFY_STATUS_ENABLED must be true")
+            [[ "$NETLIFY_PRODUCTION_BRANCH" == "main" ]] || FAILURES+=("NETLIFY_PRODUCTION_BRANCH must be main")
+          fi
+
+          REQUIRED_FILES=(
+            AGENTS.md README.md PROJECT_GOAL.md operator-guide.md package.json package-lock.json
+            .github/workflows/01-goal-intake.yml
+            .github/workflows/02-dispatch-jules.yml
+            .github/workflows/03-pr-validation.yml
+            .github/workflows/03-ci-correction.yml
+            .github/workflows/04-auto-merge.yml
+            .github/workflows/05-next-task.yml
+            .github/workflows/06-reconciler.yml
+            .github/workflows/08-netlify-status.yml
+            ops/scripts/bootstrap-project.mjs
+            ops/tasks/task-index.yaml
+            ops/state/project-state.json
+          )
+          for file in "${REQUIRED_FILES[@]}"; do
+            [[ -f "$file" ]] || FAILURES+=("missing file: $file")
+          done
+
+          {
+            echo "# Control Plane Preflight"
+            echo
+            echo "- Repository: ${REPOSITORY}"
+            echo "- Default branch: ${DEFAULT_BRANCH}"
+            echo "- Squash merge: ${ALLOW_SQUASH}"
+            echo "- Delete branch on merge: ${DELETE_BRANCH}"
+            echo "- Automation enabled: ${AUTOMATION_ENABLED}"
+            echo "- Jules source: ${JULES_SOURCE_NAME:-missing}"
+            echo "- Netlify verification: ${NETLIFY_STATUS_ENABLED}"
+            echo
+            echo "## Failures"
+            if (( ${#FAILURES[@]} == 0 )); then echo "- none"; else printf -- '- %s\n' "${FAILURES[@]}"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if (( ${#FAILURES[@]} > 0 )); then
+            printf 'Preflight failed:\n- %s\n' "${FAILURES[@]}"
+            exit 1
+          fi
+
+      - name: Install dependencies and run full CI
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run ci
+          git diff --check
+
+      - name: Verify Jules source access
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl --fail-with-body --silent --show-error --connect-timeout 15 --max-time 45 \
+            -H "x-goog-api-key: ${JULES_API_KEY}" \
+            "https://jules.googleapis.com/v1alpha/sources" \
+            | jq -e --arg source "$JULES_SOURCE_NAME" '.sources[]? | select(.name == $source)' >/dev/null \
+            || { echo "::error::Configured JULES_SOURCE_NAME is not visible to this API key"; exit 1; }
