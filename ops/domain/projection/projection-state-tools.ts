@@ -111,7 +111,15 @@ export function semanticState(
 
     Reflect.deleteProperty(
       record,
+      "observedAt",
+    );
+    Reflect.deleteProperty(
+      record,
       "generatedAt",
+    );
+    Reflect.deleteProperty(
+      record,
+      "evidenceDigest",
     );
     Reflect.deleteProperty(
       record,

@@ -8,9 +8,13 @@ import { getTaskId } from "./reconciliation-evidence.js";
 
 import {
 	comment,
-	createIncident,
+	listComments,
 	replaceStateLabels,
 } from "../infrastructure/github/reconciler-github-adapter.js";
+
+import {
+	createIncidentOnce,
+} from "./reconciliation-session-support.js";
 
 export function groupTaskIssues(
 	taskIssues: GitHubIssue[],
@@ -81,22 +85,52 @@ export async function reconcileDuplicateTaskIssues(
 			);
 		}
 
-		await createIncident(
-			repository,
-			`Duplicate TASK Issue detected for ${taskId}`,
-			[
-				"# Duplicate TASK Issue",
-				"",
-				`- TASK: \`${taskId}\``,
-				`- Canonical Issue: #${canonical.number}`,
-				`- Duplicate Issues: ${ordered
-					.slice(1)
-					.map((issue) => `#${issue.number}`)
-					.join(", ")}`,
-				"",
-				"Dispatcher idempotency와 Issue materialization 상태를 확인하십시오.",
-			].join("\n"),
-			options,
+		const duplicates = ordered.slice(1);
+		const duplicateNumbers = duplicates.map(
+			(issue) => issue.number,
 		);
+		const markerKey = [
+			"duplicate-task",
+			taskId,
+			`canonical-${canonical.number}`,
+			`duplicates-${duplicateNumbers.join("-")}`,
+		].join("-");
+		const incidentBody = [
+			"# Duplicate TASK Issue",
+			"",
+			`- TASK: \`${taskId}\``,
+			`- Canonical Issue: #${canonical.number}`,
+			`- Duplicate Issues: ${duplicates
+				.map((issue) => `#${issue.number}`)
+				.join(", ")}`,
+			"",
+			"Dispatcher idempotency와 Issue materialization 상태를 확인하십시오.",
+		].join("\n");
+		const canonicalComments = await listComments(
+			repository,
+			canonical.number,
+		);
+
+		if (
+			await createIncidentOnce(
+				repository,
+				canonical.number,
+				`Duplicate TASK Issue detected for ${taskId}`,
+				markerKey,
+				[
+					"## Duplicate TASK Evidence Set",
+					"",
+					`- Canonical Issue: #${canonical.number}`,
+					`- Duplicate Issues: ${duplicates
+						.map((issue) => `#${issue.number}`)
+						.join(", ")}`,
+				].join("\n"),
+				incidentBody,
+				canonicalComments,
+				options,
+			)
+		) {
+			result.summary.incidents += 1;
+		}
 	}
 }

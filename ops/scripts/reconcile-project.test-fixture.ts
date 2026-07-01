@@ -35,6 +35,8 @@ export interface MockConfig {
 	sessions?: Record<string, unknown>[];
 	julesStatus?: number;
 	pullRequest?: Record<string, unknown>;
+	additionalIssues?: Array<Record<string, unknown>>;
+	existingIssues?: Array<Record<string, unknown>>;
 	dryRun?: boolean;
 }
 
@@ -175,6 +177,10 @@ export async function runReconciler(config: MockConfig): Promise<{
 	const issue = makeIssue(config.labels);
 	const comments = [...config.comments];
 	const incidents: unknown[] = [];
+	const additionalIssues =
+		config.additionalIssues ?? [];
+	const existingIssues =
+		config.existingIssues ?? [];
 
 	const github = await startServer((request, response) => {
 		const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -184,7 +190,17 @@ export async function runReconciler(config: MockConfig): Promise<{
 			url.pathname === "/repos/loopwhile/Juleswhile/issues"
 		) {
 			const page = Number(url.searchParams.get("page") ?? "1");
-			writeJson(response, 200, page === 1 ? [issue] : []);
+			writeJson(
+				response,
+				200,
+				page === 1
+					? [
+							issue,
+							...additionalIssues,
+							...existingIssues,
+						]
+					: [],
+			);
 			return;
 		}
 
