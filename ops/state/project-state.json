@@ -127,8 +127,8 @@
     "ready": 0,
     "queued": 0,
     "dispatching": 0,
-    "running": 1,
-    "prOpened": 0,
+    "running": 0,
+    "prOpened": 1,
     "validating": 0,
     "correcting": 0,
     "mergeReady": 0,
@@ -144,34 +144,44 @@
   },
   "runtime": {
     "activeSessions": [],
-    "activePullRequests": [],
+    "activePullRequests": [
+      {
+        "taskId": "TASK-016",
+        "issueNumber": 179,
+        "number": 186,
+        "url": "https://github.com/loopwhile/Juleswhile/pull/186",
+        "headSha": "a227dbbd7ee9b3ba3171be448550c0cae2b47e3d",
+        "state": "open",
+        "openedAt": "2026-07-01T19:22:59Z"
+      }
+    ],
     "resourceLocks": [
       {
         "resource": "control-plane-architecture",
         "taskId": "TASK-016",
-        "acquiredAt": "2026-07-01T19:08:00Z",
-        "expiresAt": "2026-07-02T00:08:00.000Z"
+        "acquiredAt": "2026-07-01T19:23:01Z",
+        "expiresAt": "2026-07-02T00:23:01.000Z"
       },
       {
         "resource": "root-documentation",
         "taskId": "TASK-016",
-        "acquiredAt": "2026-07-01T19:08:00Z",
-        "expiresAt": "2026-07-02T00:08:00.000Z"
+        "acquiredAt": "2026-07-01T19:23:01Z",
+        "expiresAt": "2026-07-02T00:23:01.000Z"
       },
       {
         "resource": "task-manifest",
         "taskId": "TASK-016",
-        "acquiredAt": "2026-07-01T19:08:00Z",
-        "expiresAt": "2026-07-02T00:08:00.000Z"
+        "acquiredAt": "2026-07-01T19:23:01Z",
+        "expiresAt": "2026-07-02T00:23:01.000Z"
       },
       {
         "resource": "workflow-contracts",
         "taskId": "TASK-016",
-        "acquiredAt": "2026-07-01T19:08:00Z",
-        "expiresAt": "2026-07-02T00:08:00.000Z"
+        "acquiredAt": "2026-07-01T19:23:01Z",
+        "expiresAt": "2026-07-02T00:23:01.000Z"
       }
     ],
-    "lastReconciledAt": "2026-07-01T19:13:15.000Z"
+    "lastReconciledAt": "2026-07-01T19:23:01.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -193,19 +203,19 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T19:13:15.000Z",
+    "occurredAt": "2026-07-01T19:23:01.000Z",
     "runUrl": null
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T19:13:15.000Z",
+  "updatedAt": "2026-07-01T19:23:01.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T19:13:15.000Z",
-    "generatedAt": "2026-07-01T19:13:15.000Z",
-    "evidenceDigest": "sha256:b46ca0f776543741be4d6964aa868092754f392a260b49edb1e02d34a873bce3",
+    "observedAt": "2026-07-01T19:23:01.000Z",
+    "generatedAt": "2026-07-01T19:23:01.000Z",
+    "evidenceDigest": "sha256:966d8cb9be6ece4734a4b8b801fcd5b91d2ec90448b7e76124d3988042aa9168",
     "source": "github-runtime-evidence",
     "workflowRunUrl": null,
-    "syncReason": "manual-task-016-document-modularization",
+    "syncReason": "manual-task-016-pr-opened",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
