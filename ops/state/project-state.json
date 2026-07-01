@@ -122,9 +122,9 @@
     "pausedReason": null
   },
   "taskSummary": {
-    "total": 14,
+    "total": 15,
     "draft": 0,
-    "ready": 0,
+    "ready": 1,
     "queued": 0,
     "dispatching": 0,
     "running": 0,
@@ -146,7 +146,7 @@
     "activeSessions": [],
     "activePullRequests": [],
     "resourceLocks": [],
-    "lastReconciledAt": "2026-07-01T16:19:00.000Z"
+    "lastReconciledAt": "2026-07-01T16:31:30.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -168,19 +168,19 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T16:19:00.000Z",
+    "occurredAt": "2026-07-01T16:31:30.000Z",
     "runUrl": null
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T16:19:00.000Z",
+  "updatedAt": "2026-07-01T16:31:30.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T16:19:00.000Z",
-    "generatedAt": "2026-07-01T16:19:00.000Z",
-    "evidenceDigest": "sha256:1b59ec4c58efac9e4163073bb589b18250fd67dc3c1e951b33837f16888e41dd",
+    "observedAt": "2026-07-01T16:31:30.000Z",
+    "generatedAt": "2026-07-01T16:31:30.000Z",
+    "evidenceDigest": "sha256:5233f3b916d0134124a668c71dd310031d0e38e04ec9791531d79301778844a2",
     "source": "github-runtime-evidence",
     "workflowRunUrl": null,
-    "syncReason": "task-014-final-completion-rebuild",
+    "syncReason": "task-015-registration",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
