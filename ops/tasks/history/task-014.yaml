@@ -4,9 +4,9 @@ tasks:
     title: Modularize runtime projection and reconciler
     role: solution-architect
     type: refactoring
-    status: DEPLOYING
+    status: COMPLETED
     priority: P0
-    enabled: true
+    enabled: false
     objective: Split Runtime Projection and Reconciler responsibilities into explicit Domain, Application, Infrastructure and Entrypoint modules while removing every TASK-014 source-size exception without changing Runtime behavior.
     depends_on:
       - TASK-013
@@ -103,7 +103,7 @@ tasks:
       goal_issue_number: 1
       issue_number: 95
       created_at: 2026-07-01T15:01:39Z
-      updated_at: 2026-07-01T16:05:46.000Z
+      updated_at: 2026-07-01T16:06:10.000Z
       created_by: user
       tags:
         - architecture

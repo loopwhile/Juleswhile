@@ -133,8 +133,8 @@
     "correcting": 0,
     "mergeReady": 0,
     "merged": 0,
-    "deploying": 1,
-    "completed": 13,
+    "deploying": 0,
+    "completed": 14,
     "failed": 0,
     "timeout": 0,
     "retryWait": 0,
@@ -145,27 +145,8 @@
   "runtime": {
     "activeSessions": [],
     "activePullRequests": [],
-    "resourceLocks": [
-      {
-        "resource": "control-plane-architecture",
-        "taskId": "TASK-014",
-        "acquiredAt": "2026-07-01T16:05:46Z",
-        "expiresAt": "2026-07-01T20:05:46.000Z"
-      },
-      {
-        "resource": "runtime-projection",
-        "taskId": "TASK-014",
-        "acquiredAt": "2026-07-01T16:05:46Z",
-        "expiresAt": "2026-07-01T20:05:46.000Z"
-      },
-      {
-        "resource": "runtime-reconciler",
-        "taskId": "TASK-014",
-        "acquiredAt": "2026-07-01T16:05:46Z",
-        "expiresAt": "2026-07-01T20:05:46.000Z"
-      }
-    ],
-    "lastReconciledAt": "2026-07-01T16:05:46.000Z"
+    "resourceLocks": [],
+    "lastReconciledAt": "2026-07-01T16:19:00.000Z"
   },
   "quotas": {
     "date": "2026-06-29",
@@ -187,19 +168,19 @@
     "source": "reconciler",
     "taskId": null,
     "issueNumber": null,
-    "occurredAt": "2026-07-01T16:05:46.000Z",
-    "runUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28531085151"
+    "occurredAt": "2026-07-01T16:19:00.000Z",
+    "runUrl": null
   },
   "createdAt": "2026-06-27T00:00:00+09:00",
-  "updatedAt": "2026-07-01T16:05:46.000Z",
+  "updatedAt": "2026-07-01T16:19:00.000Z",
   "projection": {
     "status": "current",
-    "observedAt": "2026-07-01T16:05:46.000Z",
-    "generatedAt": "2026-07-01T16:05:46.000Z",
-    "evidenceDigest": "sha256:3ce4cc9b0622ea71a0e3388bb7babeb1faeaaa4278032186a62bb123c66d233c",
+    "observedAt": "2026-07-01T16:19:00.000Z",
+    "generatedAt": "2026-07-01T16:19:00.000Z",
+    "evidenceDigest": "sha256:1b59ec4c58efac9e4163073bb589b18250fd67dc3c1e951b33837f16888e41dd",
     "source": "github-runtime-evidence",
-    "workflowRunUrl": "https://github.com/loopwhile/Juleswhile/actions/runs/28531085151",
-    "syncReason": "issues",
+    "workflowRunUrl": null,
+    "syncReason": "task-014-final-completion-rebuild",
     "drift": {
       "stateLabelConflicts": 0,
       "missingCanonicalIssues": 0,
