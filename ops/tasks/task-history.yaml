@@ -1244,6 +1244,7 @@ tasks:
       - ops/scripts/build-dashboard.ts
       - ops/scripts/build-dashboard.test.ts
       - ops/scripts/project-state-projection.ts
+      - ops/scripts/project-state-projection.test.ts
       - ops/scripts/rebuild-project-state.ts
       - ops/scripts/runtime-projection-repository.ts
       - ops/scripts/runtime-projection-workflow.test.ts
